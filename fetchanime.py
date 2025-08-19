@@ -7,19 +7,20 @@ import random
 import re
 
 ANIME_CSV = "anime_jikan_all_new.csv"
-MANGA_CSV = "manga_jikan_all_new.csv"
-LIST_URL = "https://api.jikan.moe/v4/manga"
-DETAIL_URL = "https://api.jikan.moe/v4/manga/{id}/full"
+LIST_URL = "https://api.jikan.moe/v4/anime"
+DETAIL_URL = "https://api.jikan.moe/v4/anime/{id}/full"
 PAGE_SIZE = 25  
 MAX_CONCURRENT = 5
 RETRY_LIMIT = 5
 
-MANGA_FIELDS = [
+ANIME_FIELDS = [
     "mal_id","url","title","title_english","title_japanese","title_synonyms",
-    "type","chapters","volumes","status","publishing","published_from","published_to",
-    "score","scored_by","rank","popularity","members","favorites","synopsis","background",
-    "authors","serializations","genres","explicit_genres","themes","demographics",
-    "relations","external","images"
+    "type","source","episodes","status","airing","aired_from","aired_to",
+    "duration","rating","score","scored_by","rank","popularity","members","favorites",
+    "synopsis","background","season","year",
+    "broadcast_day","broadcast_time","broadcast_timezone",
+    "producers","licensors","studios","genres","explicit_genres","themes","demographics",
+    "relations","openings","endings","external","streaming","images","trailer"
 ]
 
 def flatten(text: str) -> str:
@@ -29,7 +30,7 @@ def flatten(text: str) -> str:
     text = re.sub(r"\s+", " ", text)
     return text.strip()
 
-def parse_manga(data):
+def parse_anime(data):
     return {
         "mal_id": data.get("mal_id"),
         "url": data.get("url"),
@@ -38,12 +39,14 @@ def parse_manga(data):
         "title_japanese": data.get("title_japanese"),
         "title_synonyms": json.dumps(data.get("title_synonyms", []), ensure_ascii=False),
         "type": data.get("type"),
-        "chapters": data.get("chapters"),
-        "volumes": data.get("volumes"),
+        "source": data.get("source"),
+        "episodes": data.get("episodes"),
         "status": data.get("status"),
-        "publishing": data.get("publishing"),
-        "published_from": data.get("published", {}).get("from"),
-        "published_to": data.get("published", {}).get("to"),
+        "airing": data.get("airing"),
+        "aired_from": data.get("aired", {}).get("from"),
+        "aired_to": data.get("aired", {}).get("to"),
+        "duration": data.get("duration"),
+        "rating": data.get("rating"),
         "score": data.get("score"),
         "scored_by": data.get("scored_by"),
         "rank": data.get("rank"),
@@ -52,21 +55,31 @@ def parse_manga(data):
         "favorites": data.get("favorites"),
         "synopsis": flatten(data.get("synopsis")),
         "background": flatten(data.get("background")),
-        "authors": json.dumps(data.get("authors", []), ensure_ascii=False),
-        "serializations": json.dumps(data.get("serializations", []), ensure_ascii=False),
+        "season": data.get("season"),
+        "year": data.get("year"),
+        "broadcast_day": data.get("broadcast", {}).get("day"),
+        "broadcast_time": data.get("broadcast", {}).get("time"),
+        "broadcast_timezone": data.get("broadcast", {}).get("timezone"),
+        "producers": json.dumps(data.get("producers", []), ensure_ascii=False),
+        "licensors": json.dumps(data.get("licensors", []), ensure_ascii=False),
+        "studios": json.dumps(data.get("studios", []), ensure_ascii=False),
         "genres": json.dumps(data.get("genres", []), ensure_ascii=False),
         "explicit_genres": json.dumps(data.get("explicit_genres", []), ensure_ascii=False),
         "themes": json.dumps(data.get("themes", []), ensure_ascii=False),
         "demographics": json.dumps(data.get("demographics", []), ensure_ascii=False),
         "relations": json.dumps(data.get("relations", []), ensure_ascii=False),
+        "openings": json.dumps(data.get("theme", {}).get("openings", []), ensure_ascii=False),
+        "endings": json.dumps(data.get("theme", {}).get("endings", []), ensure_ascii=False),
         "external": json.dumps(data.get("external", []), ensure_ascii=False),
+        "streaming": json.dumps(data.get("streaming", []), ensure_ascii=False),
         "images": json.dumps(data.get("images", {}), ensure_ascii=False),
+        "trailer": json.dumps(data.get("trailer", {}), ensure_ascii=False),
     }
 
-def save_to_csv(manga_list, csv_file=MANGA_CSV):
-    if not manga_list:
+def save_to_csv(anime_list, csv_file=ANIME_CSV):
+    if not anime_list:
         return
-    df = pd.DataFrame(manga_list, columns=MANGA_FIELDS)
+    df = pd.DataFrame(anime_list, columns=ANIME_FIELDS)
     file_exists = os.path.exists(csv_file)
     file_nonempty = file_exists and os.path.getsize(csv_file) > 0
     df.to_csv(
@@ -89,8 +102,8 @@ def read_ids(csv_path: str) -> set[int]:
         return set(pd.to_numeric(df[col], errors="coerce").dropna().astype(int))
 
 # --- Async fetch functions ---
-async def fetch_detail(session, sem, manga_id):
-    url = DETAIL_URL.format(id=manga_id)
+async def fetch_detail(session, sem, anime_id):
+    url = DETAIL_URL.format(id=anime_id)
     retries = 0
     async with sem:
         while retries < RETRY_LIMIT:
@@ -99,25 +112,22 @@ async def fetch_detail(session, sem, manga_id):
                     if resp.status == 200:
                         data = (await resp.json()).get("data")
                         if data:
-                            if is_hentai(data):
-                                print(f"⏭️ Skipped hentai: {data.get('title')}")
-                                return None
-                            print(f"✅ {manga_id}: {data.get('title')}")
-                            return parse_manga(data)
+                            print(f"✅ {anime_id}: {data.get('title')}")
+                            return parse_anime(data)
                         return None
                     elif resp.status == 404:
                         return None
                     elif resp.status == 429:
                         wait_time = min(60, 2 ** retries + random.random())
-                        print(f"⏳ Rate limited ID {manga_id}, retrying in {wait_time:.1f}s")
+                        print(f"⏳ Rate limited ID {anime_id}, retrying in {wait_time:.1f}s")
                         await asyncio.sleep(wait_time)
                     else:
                         wait_time = 3 + random.random()
-                        print(f"⚠ HTTP {resp.status} for ID {manga_id}, retrying in {wait_time:.1f}s")
+                        print(f"⚠ HTTP {resp.status} for ID {anime_id}, retrying in {wait_time:.1f}s")
                         await asyncio.sleep(wait_time)
             except Exception as e:
                 wait_time = 3 + random.random()
-                print(f"❌ Exception on ID {manga_id}: {e}, retrying in {wait_time:.1f}s")
+                print(f"❌ Exception on ID {anime_id}: {e}, retrying in {wait_time:.1f}s")
                 await asyncio.sleep(wait_time)
             retries += 1
     return None
@@ -148,24 +158,14 @@ async def fetch_list_page(session, page, retries=0):
             return await fetch_list_page(session, page, retries + 1)
     return None
 
-def is_hentai(data):
-    # check explicit genres
-    if any(g.get("name") == "Hentai" for g in data.get("explicit_genres", [])):
-        return True
-    # double check: some hentai are tagged only in genres
-    if any(g.get("name") == "Hentai" for g in data.get("genres", [])):
-        return True
-    return False
-
-
-async def crawl_all_manga():
-    existing_ids = read_ids(MANGA_CSV)
-    print(f"🔄 Already have {len(existing_ids)} manga entries")
+async def crawl_all_anime():
+    existing_ids = read_ids(ANIME_CSV)
+    print(f"🔄 Already have {len(existing_ids)} anime entries")
 
     sem = asyncio.Semaphore(MAX_CONCURRENT)
 
     async with aiohttp.ClientSession() as session:
-        page = 1547
+        page = 1
         while True:
             payload = await fetch_list_page(session, page)
             if not payload:
@@ -177,13 +177,13 @@ async def crawl_all_manga():
                 print("✅ No more data, finished crawling")
                 break
 
-            ids_to_fetch = [m["mal_id"] for m in data if m["mal_id"] not in existing_ids]
+            ids_to_fetch = [a["mal_id"] for a in data if a["mal_id"] not in existing_ids]
             if not ids_to_fetch:
                 print(f"⏭️ Page {page}: all {len(data)} already in CSV")
                 page += 1
                 continue
 
-            tasks = [fetch_detail(session, sem, mid) for mid in ids_to_fetch]
+            tasks = [fetch_detail(session, sem, aid) for aid in ids_to_fetch]
             results = []
             for task in asyncio.as_completed(tasks):
                 res = await task
@@ -199,4 +199,4 @@ async def crawl_all_manga():
             await asyncio.sleep(random.uniform(0.5, 1.5)) 
 
 if __name__ == "__main__":
-    asyncio.run(crawl_all_manga())
+    asyncio.run(crawl_all_anime())
