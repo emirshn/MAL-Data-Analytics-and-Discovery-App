@@ -1,5 +1,5 @@
 <template>
-  <div class="p-4 pt-25 bg-gray-900 min-h-screen text-white">
+  <div class="p-4 pt-24 bg-gray-900 min-h-screen text-white">
     <!-- Main Filters -->
     <div class="max-w-6xl mx-auto mb-4">
       <div class="flex flex-wrap items-center gap-4 justify-center">
@@ -117,12 +117,13 @@
         class="grid grid-cols-3 sm:grid-cols-4 md:grid-cols-5 lg:grid-cols-6 xl:grid-cols-6 gap-3"
       >
         <div
-          v-for="anime in animeList"
+          v-for="(anime, index) in animeList"
           :key="anime.id"
-          class="rounded-lg shadow-lg overflow-hidden bg-gray-800 hover:bg-gray-700 transition-colors cursor-pointer"
+          class="group rounded-lg shadow-lg overflow-visible bg-gray-800 hover:bg-gray-700 transition-all duration-300 cursor-pointer relative hover:z-50"
           @click="openAnimeDetail(anime)"
         >
-          <div class="relative">
+          <!-- Original card - always visible -->
+          <div class="relative overflow-hidden rounded-lg">
             <img
               :src="
                 anime.image_url || 'https://via.placeholder.com/150x215/374151/9CA3AF?text=No+Image'
@@ -131,43 +132,81 @@
               class="w-full aspect-[2/3] object-cover"
               @error="handleImageError"
             />
-
-            <div
-              v-if="anime.score"
-              class="absolute top-1 right-1 bg-blue-600 text-white px-1.5 py-0.5 rounded text-xs font-bold"
-            >
-              {{ anime.score.toFixed(1) }}
-            </div>
-
-            <div
-              v-if="anime.episodes"
-              class="absolute top-1 left-1 bg-black bg-opacity-70 text-white px-1.5 py-0.5 rounded text-xs"
-            >
-              {{ anime.episodes }}
-            </div>
           </div>
 
+          <!-- Title section -->
           <div class="p-2">
-            <div class="flex items-center justify-between mb-1">
-              <span
-                :class="['w-2 h-2 rounded-full', getStatusColor(anime.status)]"
-                :title="anime.status"
-              ></span>
-              <span v-if="anime.year" class="text-xs text-gray-400">{{ anime.year }}</span>
-            </div>
-
-            <h2 class="font-medium text-xs line-clamp-2 mb-1" :title="anime.title">
+            <h2 class="font-medium text-xs line-clamp-2 text-center" :title="anime.title">
               {{ anime.title }}
             </h2>
+          </div>
 
-            <div v-if="anime.genres && anime.genres.length > 0" class="flex flex-wrap gap-1">
-              <span
-                v-for="genre in anime.genres.slice(0, 2)"
-                :key="genre"
-                class="text-xs bg-gray-700 px-1.5 py-0.5 rounded"
+          <!-- Hover details panel - Text only Netflix style -->
+          <div
+            :class="[
+              'absolute top-0 w-80 bg-gray-900 border border-gray-700 shadow-2xl rounded-lg overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 pointer-events-none',
+              // Position on right if in left half of grid (first 3 columns in 6-col grid)
+              index % 6 < 3 ? 'left-full ml-2' : 'right-full mr-2',
+            ]"
+          >
+            <!-- Content -->
+            <div class="p-4 space-y-3">
+              <!-- Title and Score -->
+              <div class="flex items-start justify-between">
+                <h3 class="font-bold text-white text-lg flex-1 pr-4" :title="anime.title">
+                  {{ anime.title }}
+                </h3>
+                <div
+                  v-if="anime.score"
+                  class="bg-green-600 text-white px-2 py-1 rounded text-sm font-bold flex items-center gap-1 flex-shrink-0"
+                >
+                  <span>👍</span>
+                  <span>{{ Math.round(anime.score * 10) }}%</span>
+                </div>
+              </div>
+
+              <!-- Year and Season -->
+              <div v-if="anime.year || anime.season" class="text-gray-300 text-sm">
+                <span v-if="anime.season" class="capitalize">{{ anime.season }} - </span>
+                <span v-if="anime.year"> {{ anime.year }}</span>
+              </div>
+
+              <!-- Studio (if available) -->
+              <div v-if="anime.studio" class="text-gray-300 text-sm">
+                {{ anime.studio }}
+              </div>
+
+              <!-- Format and Episodes -->
+              <div class="text-gray-300 text-sm">
+                <span v-if="anime.type">{{ anime.type }}</span>
+                <span v-if="anime.episodes"> • {{ anime.episodes }} episodes</span>
+              </div>
+
+              <!-- Genres as tags -->
+              <div
+                v-if="anime.genres && anime.genres.length > 0"
+                class="flex flex-wrap gap-1.5 pt-1"
               >
-                {{ genre }}
-              </span>
+                <span
+                  v-for="genre in anime.genres.slice(0, 4)"
+                  :key="genre"
+                  class="px-3 py-1 bg-gray-800 text-white text-xs rounded-full border border-gray-600 hover:bg-gray-700 transition-colors"
+                >
+                  {{ genre }}
+                </span>
+              </div>
+
+              <!-- Status -->
+              <div class="pt-1">
+                <span
+                  :class="[
+                    'inline-block px-3 py-1.5 rounded text-sm font-medium',
+                    getStatusBgColor(anime.status),
+                  ]"
+                >
+                  {{ anime.status || 'Unknown Status' }}
+                </span>
+              </div>
             </div>
           </div>
         </div>
@@ -206,6 +245,15 @@ const getStatusColor = (status) => {
   if (s.includes('airing') && !s.includes('not yet')) return 'bg-green-500'
   if (s.includes('not yet aired')) return 'bg-orange-500'
   return 'bg-gray-400'
+}
+
+const getStatusBgColor = (status) => {
+  if (!status) return 'bg-gray-700 text-white'
+  const s = status.toLowerCase()
+  if (s.includes('finished')) return 'bg-red-600 text-white'
+  if (s.includes('airing') && !s.includes('not yet')) return 'bg-green-600 text-white'
+  if (s.includes('not yet aired')) return 'bg-orange-600 text-white'
+  return 'bg-gray-700 text-white'
 }
 
 const capitalize = (str) => {

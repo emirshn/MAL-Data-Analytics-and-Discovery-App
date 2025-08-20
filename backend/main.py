@@ -64,7 +64,7 @@ def get_anime(
     if search:
         search_mask = (
             df['title'].str.contains(search, case=False, na=False) |
-            df['title_english'].str.contains(search, case=False, na=False)
+            df['title_english'].str.contains(search, case=False, na=False) | df['title_japanese'].str.contains(search, case=False, na=False)
         )
         df = df[search_mask]
 
@@ -137,7 +137,9 @@ def get_anime(
             "streaming_platforms": streaming_platforms,
             "is_completed": safe_value(row.get('is_completed')),
             "has_score": safe_value(row.get('has_score')),
-            "url": safe_value(row.get('url'))
+            "url": safe_value(row.get('url')),
+            "studio": safe_value(row.get('studios')),
+            "season": safe_value(row.get('season')),
         })
 
     return {
