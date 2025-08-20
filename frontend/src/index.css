@@ -1,0 +1,9 @@
+@import "tailwindcss";
+
+body {
+  @apply min-h-screen bg-gray-900 text-white; 
+  background-image: url('/background.jpg'); 
+  background-size: cover;
+  background-position: center;
+  background-attachment: fixed;
+}
