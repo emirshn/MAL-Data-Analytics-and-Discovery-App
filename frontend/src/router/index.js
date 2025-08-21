@@ -5,11 +5,13 @@ import Manga from '../views/Manga.vue'
 import Browse from '../views/Browse.vue'
 import Stats from '../views/Stats.vue'
 import Recommend from '../views/Recommend.vue'
+import AnimeDetail from '../views/AnimeDetail.vue'
 
 const routes = [
   { path: '/', redirect: '/home' },
   { path: '/home', name: 'Home', component: Home },
   { path: '/anime', name: 'Anime', component: Anime },
+  { path: '/anime/:id', name: 'AnimeDetail', component: AnimeDetail, props: true },
   { path: '/manga', name: 'Manga', component: Manga },
   { path: '/browse', name: 'Browse', component: Browse },
   { path: '/stats', name: 'Stats', component: Stats },

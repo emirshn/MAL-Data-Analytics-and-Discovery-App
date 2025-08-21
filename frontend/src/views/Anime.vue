@@ -102,6 +102,16 @@
           <span>Completed</span>
         </label>
 
+        <label class="flex items-center space-x-2 text-sm">
+          <input
+            v-model="isOriginalTitle"
+            @change="resetAnime"
+            type="checkbox"
+            class="w-4 h-4 text-blue-600 bg-gray-800 border-gray-600 rounded focus:ring-blue-500"
+          />
+          <span>English Title</span>
+        </label>
+
         <span class="text-sm text-gray-400">{{ totalCount || 0 }} results</span>
       </div>
     </div>
@@ -136,7 +146,14 @@
 
           <!-- Title section -->
           <div class="p-2">
-            <h2 class="font-medium text-xs line-clamp-2 text-center" :title="anime.title">
+            <h2
+              v-if="isOriginalTitle"
+              class="font-medium text-xs line-clamp-2 text-center"
+              :title="anime.title_english || anime.title"
+            >
+              {{ anime.title_english || anime.title }}
+            </h2>
+            <h2 v-else class="font-medium text-xs line-clamp-2 text-center" :title="anime.title">
               {{ anime.title }}
             </h2>
           </div>
@@ -144,8 +161,7 @@
           <!-- Hover details panel - Text only Netflix style -->
           <div
             :class="[
-              'absolute top-0 w-80 bg-gray-900 border border-gray-700 shadow-2xl rounded-lg overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 pointer-events-none',
-              // Position on right if in left half of grid (first 3 columns in 6-col grid)
+              'absolute top-0 w-80 bg-gray-800 border border-gray-700 shadow-2xl rounded-lg overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 pointer-events-none',
               index % 6 < 3 ? 'left-full ml-2' : 'right-full mr-2',
             ]"
           >
@@ -153,27 +169,40 @@
             <div class="p-4 space-y-3">
               <!-- Title and Score -->
               <div class="flex items-start justify-between">
-                <h3 class="font-bold text-white text-lg flex-1 pr-4" :title="anime.title">
+                <h3
+                  v-if="isOriginalTitle"
+                  class="font-bold text-white text-lg flex-1 pr-4"
+                  :title="anime.title_english || anime.title"
+                >
+                  {{ anime.title_english || anime.title }}
+                </h3>
+                <h3 v-else class="font-bold text-white text-lg flex-1 pr-4" :title="anime.title">
                   {{ anime.title }}
                 </h3>
                 <div
                   v-if="anime.score"
-                  class="bg-green-600 text-white px-2 py-1 rounded text-sm font-bold flex items-center gap-1 flex-shrink-0"
+                  :class="[
+                    'text-white px-2 py-1 rounded text-sm font-bold flex items-center gap-1 flex-shrink-0',
+                    getScoreBgColor(anime.score),
+                  ]"
                 >
                   <span>👍</span>
                   <span>{{ Math.round(anime.score * 10) }}%</span>
                 </div>
               </div>
 
+              <!-- Studio -->
+              <div
+                v-if="anime.studio"
+                :style="{ color: animeColors[anime.id]?.bg || '#374151' }"
+                class="filter brightness-125"
+              >
+                {{ anime.studio }}
+              </div>
               <!-- Year and Season -->
               <div v-if="anime.year || anime.season" class="text-gray-300 text-sm">
                 <span v-if="anime.season" class="capitalize">{{ anime.season }} - </span>
                 <span v-if="anime.year"> {{ anime.year }}</span>
-              </div>
-
-              <!-- Studio (if available) -->
-              <div v-if="anime.studio" class="text-gray-300 text-sm">
-                {{ anime.studio }}
               </div>
 
               <!-- Format and Episodes -->
@@ -190,7 +219,11 @@
                 <span
                   v-for="genre in anime.genres.slice(0, 4)"
                   :key="genre"
-                  class="px-3 py-1 bg-gray-800 text-white text-xs rounded-full border border-gray-600 hover:bg-gray-700 transition-colors"
+                  class="px-3 py-1 text-xs rounded-full border border-gray-600 transition-colors"
+                  :style="{
+                    backgroundColor: animeColors[anime.id]?.bg || '#374151',
+                    color: animeColors[anime.id]?.text || 'white',
+                  }"
                 >
                   {{ genre }}
                 </span>
@@ -227,8 +260,11 @@
 </template>
 
 <script setup>
-import { ref, onMounted, onUnmounted } from 'vue'
+import { ref, onMounted, onUnmounted, reactive, watch } from 'vue'
+import { useRouter } from 'vue-router'
 import axios from 'axios'
+
+const router = useRouter()
 
 const animeList = ref([])
 const page = ref(1)
@@ -237,14 +273,18 @@ const loading = ref(false)
 const hasMore = ref(true)
 const totalCount = ref(0)
 const showAdvanced = ref(false)
+const isOriginalTitle = ref(false)
 
-const getStatusColor = (status) => {
-  if (!status) return 'bg-gray-400'
-  const s = status.toLowerCase()
-  if (s.includes('finished')) return 'bg-red-500'
-  if (s.includes('airing') && !s.includes('not yet')) return 'bg-green-500'
-  if (s.includes('not yet aired')) return 'bg-orange-500'
-  return 'bg-gray-400'
+const getScoreBgColor = (score) => {
+  if (score === null || score === undefined) return 'bg-gray-700 text-white'
+
+  const s = Math.round(score * 10)
+  if (s >= 81) return 'bg-green-600'
+  if (s >= 71) return 'bg-lime-500'
+  if (s >= 51) return 'bg-yellow-600'
+  if (s >= 0) return 'bg-red-600'
+
+  return 'bg-gray-700 text-white'
 }
 
 const getStatusBgColor = (status) => {
@@ -338,6 +378,7 @@ const fetchAnime = async (reset = false) => {
   } finally {
     loading.value = false
   }
+  assignColors(animeList.value)
 }
 
 const resetAnime = async () => {
@@ -360,12 +401,73 @@ const handleScroll = () => {
 }
 
 const openAnimeDetail = (anime) => {
-  console.log('Selected anime:', anime)
+  router.push({ name: 'AnimeDetail', params: { id: anime.id } })
 }
+
+const animeColors = reactive({})
+
+const colors = [
+  '#F87171', // red-400
+  '#FBBF24', // amber-400
+  '#34D399', // green-400
+  '#60A5FA', // blue-400
+  '#A78BFA', // purple-400
+  '#F472B6', // pink-400
+  '#38BDF8', // sky-400
+  '#FB923C', // orange-400
+  '#4ADE80', // emerald-400
+  '#22D3EE', // cyan-400
+  '#E879F9', // fuchsia-400
+  '#FACC15', // yellow-400
+  '#2DD4BF', // teal-400
+  '#FCA5A5', // red-300
+  '#FDBA74', // orange-300
+  '#86EFAC', // green-300
+  '#93C5FD', // blue-300
+  '#C4B5FD', // violet-300
+  '#F9A8D4', // pink-300
+  '#67E8F9', // cyan-300
+  '#FDE68A', // yellow-300
+]
+
+const getRandomColor = () => {
+  return colors[Math.floor(Math.random() * colors.length)]
+}
+
+const getContrastColor = (hexColor) => {
+  const c = hexColor.charAt(0) === '#' ? hexColor.substring(1) : hexColor
+  const r = parseInt(c.substr(0, 2), 16)
+  const g = parseInt(c.substr(2, 2), 16)
+  const b = parseInt(c.substr(4, 2), 16)
+  const luminance = 0.299 * r + 0.587 * g + 0.114 * b
+  return luminance > 186 ? 'black' : 'white'
+}
+
+const assignColors = (animeArray) => {
+  animeArray.forEach((anime) => {
+    if (!animeColors[anime.id]) {
+      const bg = getRandomColor()
+      animeColors[anime.id] = {
+        bg,
+        text: getContrastColor(bg),
+      }
+    }
+  })
+}
+
+watch(
+  animeList,
+  (newList) => {
+    if (!newList) return
+    assignColors(newList)
+  },
+  { immediate: true },
+)
 
 onMounted(async () => {
   await fetchFilters()
   await fetchAnime(true)
+  assignColors(animeList.value)
   window.addEventListener('scroll', handleScroll)
 })
 
