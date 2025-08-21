@@ -25,9 +25,9 @@
         <div class="flex flex-col lg:flex-row gap-8">
           <div class="flex-shrink-0">
             <img
-              :src="anime.image_url || anime.thumbnail_url || '/placeholder-anime.jpg'"
+              :src="getImageUrl() || '/placeholder-anime.jpg'"
               :alt="anime.title || 'Anime Cover'"
-              class="w-64 h-80 rounded-lg shadow-2xl object-cover mx-auto lg:mx-0"
+              class="w-64 h-96 rounded-lg shadow-2xl object-cover mx-auto lg:mx-0"
               @error="handleImageError"
             />
           </div>
@@ -44,8 +44,12 @@
               <p v-if="anime.title_japanese" class="text-gray-400 text-lg">
                 {{ anime.title_japanese }}
               </p>
-              <p v-if="anime.title_synonyms" class="text-gray-500 text-sm">
-                <strong>Also known as:</strong> {{ anime.title_synonyms }}
+              <p
+                v-if="anime.title_synonyms && anime.title_synonyms.length"
+                class="text-gray-500 text-sm"
+              >
+                <strong>Also known as:</strong>
+                {{ anime.title_synonyms.join(', ') }}
               </p>
             </div>
 
@@ -58,18 +62,18 @@
                 <div class="text-yellow-400 text-2xl font-bold">
                   ★ {{ formatScore(anime.score) }}
                 </div>
-                <div class="text-xs text-white-400">Score</div>
+                <div class="text-xs text-gray-400">Score</div>
               </div>
               <div v-if="anime.rank" class="bg-purple-600 bg-opacity-20 p-3 rounded-lg text-center">
                 <div class="text-purple-400 text-2xl font-bold">#{{ anime.rank }}</div>
-                <div class="text-xs text-white-400">Rank</div>
+                <div class="text-xs text-gray-400">Rank</div>
               </div>
               <div
                 v-if="anime.popularity"
                 class="bg-green-600 bg-opacity-20 p-3 rounded-lg text-center"
               >
                 <div class="text-green-400 text-2xl font-bold">#{{ anime.popularity }}</div>
-                <div class="text-xs text-white-700">Popularity</div>
+                <div class="text-xs text-gray-400">Popularity</div>
               </div>
               <div
                 v-if="anime.members"
@@ -78,7 +82,7 @@
                 <div class="text-blue-400 text-2xl font-bold">
                   {{ formatNumber(anime.members) }}
                 </div>
-                <div class="text-xs text-white-400">Members</div>
+                <div class="text-xs text-gray-400">Members</div>
               </div>
             </div>
 
@@ -130,9 +134,7 @@
         </h2>
         <div class="prose prose-invert max-w-none">
           <p class="text-gray-300 leading-relaxed text-base">
-            {{
-              anime.synopsis || anime.synopsis_short || anime.background || 'No synopsis available.'
-            }}
+            {{ anime.synopsis || anime.background || 'No synopsis available.' }}
           </p>
         </div>
       </div>
@@ -151,19 +153,23 @@
               <span class="text-gray-400">Season:</span>
               <span class="font-medium capitalize">{{ anime.season }}</span>
             </div>
-            <div v-if="anime.aired_from || anime.aired_to" class="flex justify-between">
+            <div v-if="anime.aired" class="flex justify-between">
               <span class="text-gray-400">Aired:</span>
-              <span class="font-medium">
-                {{ formatDateRange(anime.aired_from, anime.aired_to) }}
-              </span>
+              <span class="font-medium">{{ getAiredString() }}</span>
             </div>
-            <div v-if="anime.broadcast_day" class="flex justify-between">
+            <div v-if="getBroadcastDay()" class="flex justify-between">
               <span class="text-gray-400">Broadcast Day:</span>
-              <span class="font-medium">{{ anime.broadcast_day }}</span>
+              <span class="font-medium">{{ getBroadcastDay() }}</span>
             </div>
-            <div v-if="anime.broadcast_time" class="flex justify-between">
+            <div v-if="getBroadcastTime()" class="flex justify-between">
               <span class="text-gray-400">Broadcast Time:</span>
-              <span class="font-medium">{{ anime.broadcast_time }}</span>
+              <span class="font-medium">{{ getBroadcastTime() }}</span>
+            </div>
+            <div v-if="anime.airing !== undefined" class="flex justify-between">
+              <span class="text-gray-400">Currently Airing:</span>
+              <span class="font-medium" :class="anime.airing ? 'text-green-400' : 'text-red-400'">
+                {{ anime.airing ? 'Yes' : 'No' }}
+              </span>
             </div>
           </div>
         </div>
@@ -172,11 +178,11 @@
         <div class="bg-gray-800 rounded-xl p-6">
           <h3 class="text-xl font-semibold mb-4 text-orange-400">Production</h3>
           <div class="space-y-3 text-sm">
-            <div v-if="anime.studios && anime.studios.length" class="space-y-1">
+            <div v-if="getStudiosList().length" class="space-y-1">
               <span class="text-gray-400 block">Studios:</span>
               <div class="flex flex-wrap gap-1">
                 <span
-                  v-for="studio in anime.studios"
+                  v-for="studio in getStudiosList()"
                   :key="studio"
                   class="px-2 py-1 bg-orange-600 rounded text-xs"
                 >
@@ -184,11 +190,11 @@
                 </span>
               </div>
             </div>
-            <div v-if="anime.producers && anime.producers.length" class="space-y-1">
+            <div v-if="getProducersList().length" class="space-y-1">
               <span class="text-gray-400 block">Producers:</span>
               <div class="flex flex-wrap gap-1">
                 <span
-                  v-for="producer in anime.producers"
+                  v-for="producer in getProducersList()"
                   :key="producer"
                   class="px-2 py-1 bg-gray-600 rounded text-xs"
                 >
@@ -196,11 +202,11 @@
                 </span>
               </div>
             </div>
-            <div v-if="anime.licensors && anime.licensors.length" class="space-y-1">
+            <div v-if="getLicensorsList().length" class="space-y-1">
               <span class="text-gray-400 block">Licensors:</span>
               <div class="flex flex-wrap gap-1">
                 <span
-                  v-for="licensor in anime.licensors"
+                  v-for="licensor in getLicensorsList()"
                   :key="licensor"
                   class="px-2 py-1 bg-indigo-600 rounded text-xs"
                 >
@@ -213,49 +219,51 @@
       </div>
 
       <!-- Categories Section -->
-      <div class="grid grid-cols-1 md:grid-cols-3 gap-6">
-        <!-- Genres -->
-        <div v-if="anime.genres && anime.genres.length" class="bg-gray-800 rounded-xl p-6">
-          <h3 class="text-xl font-semibold mb-4 text-blue-400">Genres</h3>
-          <div class="flex flex-wrap gap-2">
-            <span
-              v-for="genre in anime.genres"
-              :key="genre"
-              class="px-3 py-1 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors cursor-pointer"
-            >
-              {{ genre }}
-            </span>
+      <div class="space-y-6">
+        <!-- Genres and Themes Row -->
+        <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <!-- Genres -->
+          <div v-if="getGenresList().length" class="bg-gray-800 rounded-xl p-6">
+            <h3 class="text-xl font-semibold mb-4 text-blue-400">Genres</h3>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="genre in getGenresList()"
+                :key="genre"
+                class="px-3 py-1 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors cursor-pointer"
+              >
+                {{ genre }}
+              </span>
+            </div>
+          </div>
+
+          <!-- Themes -->
+          <div v-if="getThemesList().length" class="bg-gray-800 rounded-xl p-6">
+            <h3 class="text-xl font-semibold mb-4 text-purple-400">Themes</h3>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="theme in getThemesList()"
+                :key="theme"
+                class="px-3 py-1 rounded-full bg-purple-600 text-white text-sm hover:bg-purple-700 transition-colors cursor-pointer"
+              >
+                {{ theme }}
+              </span>
+            </div>
           </div>
         </div>
 
-        <!-- Themes -->
-        <div v-if="anime.themes && anime.themes.length" class="bg-gray-800 rounded-xl p-6">
-          <h3 class="text-xl font-semibold mb-4 text-purple-400">Themes</h3>
-          <div class="flex flex-wrap gap-2">
-            <span
-              v-for="theme in anime.themes"
-              :key="theme"
-              class="px-3 py-1 rounded-full bg-purple-600 text-white text-sm hover:bg-purple-700 transition-colors cursor-pointer"
-            >
-              {{ theme }}
-            </span>
-          </div>
-        </div>
-
-        <!-- Demographics -->
-        <div
-          v-if="anime.demographics && anime.demographics.length"
-          class="bg-gray-800 rounded-xl p-6"
-        >
-          <h3 class="text-xl font-semibold mb-4 text-green-400">Demographics</h3>
-          <div class="flex flex-wrap gap-2">
-            <span
-              v-for="demo in anime.demographics"
-              :key="demo"
-              class="px-3 py-1 rounded-full bg-green-600 text-white text-sm hover:bg-green-700 transition-colors cursor-pointer"
-            >
-              {{ demo }}
-            </span>
+        <!-- Demographics Row -->
+        <div v-if="getDemographicsList().length" class="grid grid-cols-1 gap-6">
+          <div class="bg-gray-800 rounded-xl p-6">
+            <h3 class="text-xl font-semibold mb-4 text-green-400">Demographics</h3>
+            <div class="flex flex-wrap gap-2">
+              <span
+                v-for="demo in getDemographicsList()"
+                :key="demo"
+                class="px-3 py-1 rounded-full bg-green-600 text-white text-sm hover:bg-green-700 transition-colors cursor-pointer"
+              >
+                {{ demo }}
+              </span>
+            </div>
           </div>
         </div>
       </div>
@@ -274,25 +282,9 @@
               <span class="text-gray-400">Favorited by:</span>
               <span class="font-medium">{{ formatNumber(anime.favorites) }} users</span>
             </div>
-            <div v-if="anime.watching" class="flex justify-between text-sm">
-              <span class="text-gray-400">Currently Watching:</span>
-              <span class="font-medium">{{ formatNumber(anime.watching) }} users</span>
-            </div>
-            <div v-if="anime.completed" class="flex justify-between text-sm">
-              <span class="text-gray-400">Completed:</span>
-              <span class="font-medium">{{ formatNumber(anime.completed) }} users</span>
-            </div>
-            <div v-if="anime.on_hold" class="flex justify-between text-sm">
-              <span class="text-gray-400">On Hold:</span>
-              <span class="font-medium">{{ formatNumber(anime.on_hold) }} users</span>
-            </div>
-            <div v-if="anime.dropped" class="flex justify-between text-sm">
-              <span class="text-gray-400">Dropped:</span>
-              <span class="font-medium">{{ formatNumber(anime.dropped) }} users</span>
-            </div>
-            <div v-if="anime.plan_to_watch" class="flex justify-between text-sm">
-              <span class="text-gray-400">Plan to Watch:</span>
-              <span class="font-medium">{{ formatNumber(anime.plan_to_watch) }} users</span>
+            <div v-if="anime.members" class="flex justify-between text-sm">
+              <span class="text-gray-400">Total Members:</span>
+              <span class="font-medium">{{ formatNumber(anime.members) }} users</span>
             </div>
           </div>
         </div>
@@ -301,31 +293,258 @@
         <div class="bg-gray-800 rounded-xl p-6">
           <h3 class="text-xl font-semibold mb-4 text-cyan-400">Additional Details</h3>
           <div class="space-y-3 text-sm">
-            <div v-if="anime.approved" class="flex justify-between">
-              <span class="text-gray-400">Status:</span>
-              <span class="text-green-400 font-medium">✓ Approved</span>
+            <div v-if="anime.approved !== undefined" class="flex justify-between">
+              <span class="text-gray-400">Approved:</span>
+              <span class="font-medium" :class="anime.approved ? 'text-green-400' : 'text-red-400'">
+                {{ anime.approved ? 'Yes' : 'No' }}
+              </span>
             </div>
             <div v-if="anime.mal_id" class="flex justify-between">
               <span class="text-gray-400">MAL ID:</span>
               <span class="font-medium">{{ anime.mal_id }}</span>
             </div>
-            <div v-if="anime.created_at" class="flex justify-between">
-              <span class="text-gray-400">Added:</span>
-              <span class="font-medium">{{ formatDate(anime.created_at) }}</span>
-            </div>
-            <div v-if="anime.updated_at" class="flex justify-between">
-              <span class="text-gray-400">Last Updated:</span>
-              <span class="font-medium">{{ formatDate(anime.updated_at) }}</span>
+          </div>
+        </div>
+      </div>
+
+      <!-- Relations Section -->
+      <div v-if="anime.relations && anime.relations.length" class="bg-gray-800 rounded-xl p-6">
+        <h3 class="text-xl font-semibold mb-6 text-pink-400 flex items-center">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+            ></path>
+          </svg>
+          Related Anime
+        </h3>
+
+        <!-- Single horizontal scrollable container for all entries -->
+        <div class="flex gap-4 overflow-x-auto pb-4">
+          <div v-for="relation in anime.relations" :key="relation.relation" class="flex gap-4">
+            <div
+              v-for="entry in relation.entry"
+              :key="entry.mal_id"
+              class="flex-shrink-0 w-32 group cursor-pointer"
+            >
+              <a v-if="entry.url" :href="entry.url" target="_blank" class="block">
+                <div
+                  class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
+                >
+                  <!-- Image with fallback -->
+                  <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+                    <img
+                      :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
+                      :alt="entry.name"
+                      class="w-full h-full object-cover"
+                      @error="() => handleRelationImageError(entry)"
+                      :class="{ 'opacity-50': !relationImages[entry.mal_id] }"
+                    />
+                    <div class="absolute top-2 right-2">
+                      <span
+                        class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
+                      >
+                        {{ entry.type }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Content -->
+                  <div class="p-2">
+                    <h5
+                      class="text-xs font-medium text-white line-clamp-2 group-hover:text-pink-300 transition-colors leading-tight mb-1"
+                    >
+                      {{ entry.name }}
+                    </h5>
+                    <span class="text-xs text-pink-300 capitalize">{{
+                      getRelationForEntry(entry.mal_id)
+                    }}</span>
+                  </div>
+                </div>
+              </a>
+
+              <!-- Non-clickable version if no URL -->
+              <div v-else class="block">
+                <div class="bg-gray-900 rounded-lg overflow-hidden">
+                  <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+                    <img
+                      :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
+                      :alt="entry.name"
+                      class="w-full h-full object-cover"
+                      @error="() => handleRelationImageError(entry)"
+                      :class="{ 'opacity-50': !relationImages[entry.mal_id] }"
+                    />
+                    <div class="absolute top-2 right-2">
+                      <span
+                        class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
+                      >
+                        {{ entry.type }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="p-2">
+                    <h5 class="text-xs font-medium text-white line-clamp-2 leading-tight mb-1">
+                      {{ entry.name }}
+                    </h5>
+                    <span class="text-xs text-pink-300 capitalize">{{
+                      getRelationForEntry(entry.mal_id)
+                    }}</span>
+                  </div>
+                </div>
+              </div>
             </div>
           </div>
         </div>
       </div>
 
-      <!-- Streaming Platforms -->
+      <!-- Recommendations Section -->
       <div
-        v-if="anime.streaming_platforms && anime.streaming_platforms.length"
+        v-if="anime.recommendations && anime.recommendations.length"
         class="bg-gray-800 rounded-xl p-6"
       >
+        <h3 class="text-xl font-semibold mb-6 text-amber-400 flex items-center">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+            ></path>
+          </svg>
+          Recommended By Users
+        </h3>
+
+        <!-- Horizontal scrollable container -->
+        <div class="overflow-x-auto overflow-y-hidden">
+          <div class="flex gap-4 pb-4 min-w-max">
+            <div
+              v-for="recommendation in anime.recommendations"
+              :key="recommendation.entry.mal_id"
+              class="flex-shrink-0 w-40 group cursor-pointer"
+              @click="openAnimeDetail(recommendation)"
+            >
+              <div
+                class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full"
+              >
+                <!-- Image -->
+                <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+                  <img
+                    :src="getRecommendationImageUrl(recommendation.entry)"
+                    :alt="recommendation.entry.title"
+                    class="w-full h-full object-cover"
+                    @error="(e) => handleRecommendationImageError(e, recommendation.entry)"
+                  />
+                  <div class="absolute top-2 right-2">
+                    <span class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded">
+                      ANIME
+                    </span>
+                  </div>
+                  <div class="absolute bottom-2 left-2">
+                    <span
+                      class="px-2 py-1 bg-amber-600 bg-opacity-90 text-white text-xs rounded flex items-center"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
+                        />
+                      </svg>
+                      {{ recommendation.votes }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Content -->
+                <div class="p-3">
+                  <h5
+                    class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-1"
+                  >
+                    {{ recommendation.entry.title }}
+                  </h5>
+                  <span class="text-xs text-amber-300"> {{ recommendation.votes }} votes </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Opening & Ending Themes -->
+      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div v-if="getOpeningThemes().length" class="bg-gray-800 rounded-xl p-6">
+          <h3 class="text-xl font-semibold mb-4 text-emerald-400 flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+              ></path>
+            </svg>
+            Opening Themes
+          </h3>
+          <div class="space-y-2">
+            <div
+              v-for="opening in getOpeningThemes()"
+              :key="opening"
+              class="bg-gray-900 p-3 rounded text-sm"
+            >
+              {{ opening }}
+            </div>
+          </div>
+        </div>
+
+        <div v-if="getEndingThemes().length" class="bg-gray-800 rounded-xl p-6">
+          <h3 class="text-xl font-semibold mb-4 text-teal-400 flex items-center">
+            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
+              ></path>
+            </svg>
+            Ending Themes
+          </h3>
+          <div class="space-y-2">
+            <div
+              v-for="ending in getEndingThemes()"
+              :key="ending"
+              class="bg-gray-900 p-3 rounded text-sm"
+            >
+              {{ ending }}
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Trailer Section -->
+      <div v-if="anime.trailer && anime.trailer.youtube_id" class="bg-gray-800 rounded-xl p-6">
+        <h3 class="text-xl font-semibold mb-4 text-red-400 flex items-center">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
+            ></path>
+          </svg>
+          Official Trailer
+        </h3>
+        <div class="aspect-video">
+          <iframe
+            :src="getTrailerUrl(anime.trailer)"
+            class="w-full h-full rounded-lg"
+            frameborder="0"
+            allowfullscreen
+          ></iframe>
+        </div>
+      </div>
+
+      <!-- Streaming Platforms -->
+      <div v-if="getStreamingPlatforms().length" class="bg-gray-800 rounded-xl p-6">
         <h3 class="text-xl font-semibold mb-4 text-red-400 flex items-center">
           <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -338,25 +557,28 @@
           Streaming Platforms
         </h3>
         <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <div
-            v-for="platform in anime.streaming_platforms"
-            :key="platform"
-            class="bg-red-600 bg-opacity-20 border border-red-600 rounded-lg p-3 text-center hover:bg-red-600 hover:bg-opacity-30 transition-colors cursor-pointer"
+          <a
+            v-for="platform in getStreamingPlatforms()"
+            :key="platform.name"
+            :href="platform.url"
+            target="_blank"
+            class="bg-gray-600 bg-opacity-20 border border-gray-600 rounded-lg p-3 text-center hover:bg-gray-600 hover:bg-opacity-30 transition-colors cursor-pointer"
           >
-            <span class="text-red-400 font-medium">{{ platform }}</span>
-          </div>
+            <span class="text-white-400 font-medium">{{ platform.name }}</span>
+          </a>
         </div>
       </div>
 
       <!-- External Links -->
       <div class="bg-gray-800 rounded-xl p-6">
         <h3 class="text-xl font-semibold mb-4 text-indigo-400">External Links</h3>
-        <div class="flex flex-wrap gap-4">
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          <!-- Main Links -->
           <a
             v-if="anime.url"
             :href="anime.url"
             target="_blank"
-            class="flex items-center px-4 py-2 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
+            class="flex items-center px-4 py-3 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
           >
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
@@ -368,21 +590,41 @@
             </svg>
             MyAnimeList
           </a>
+
           <a
-            v-if="anime.trailer_url"
-            :href="anime.trailer_url"
+            v-if="anime.trailer && anime.trailer.url"
+            :href="anime.trailer.url"
             target="_blank"
-            class="flex items-center px-4 py-2 bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
+            class="flex items-center px-4 py-3 bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
           >
             <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
               <path
                 stroke-linecap="round"
                 stroke-linejoin="round"
                 stroke-width="2"
-                d="M14.828 14.828a4 4 0 01-5.656 0M9 10h1.586a1 1 0 01.707.293l2.414 2.414a1 1 0 00.707.293H15M9 10v4a2 2 0 002 2h2a2 2 0 002-2v-4M9 10V6a2 2 0 012-2h2a2 2 0 012 2v4"
+                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
               ></path>
             </svg>
             Watch Trailer
+          </a>
+
+          <!-- External links from the external array -->
+          <a
+            v-for="link in anime.external || []"
+            :key="link.name"
+            :href="link.url"
+            target="_blank"
+            class="flex items-center px-4 py-3 bg-gray-600 rounded-lg hover:bg-gray-500 transition-colors"
+          >
+            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              <path
+                stroke-linecap="round"
+                stroke-linejoin="round"
+                stroke-width="2"
+                d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14"
+              ></path>
+            </svg>
+            <span class="truncate">{{ link.name }}</span>
           </a>
         </div>
       </div>
@@ -441,21 +683,233 @@
 import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { useRouter } from 'vue-router'
+
+const router = useRouter()
 
 const route = useRoute()
 const anime = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const showDebug = ref(false)
+const relationImages = ref({})
+
+const openAnimeDetail = (anime) => {
+  window.location.href = `/anime/${anime.entry.mal_id}`
+}
+
+const getImageUrl = () => {
+  if (!anime.value?.images) return null
+
+  if (anime.value.images.webp?.large_image_url) {
+    return anime.value.images.webp.large_image_url
+  }
+  if (anime.value.images.webp?.image_url) {
+    return anime.value.images.webp.image_url
+  }
+  if (anime.value.images.jpg?.large_image_url) {
+    return anime.value.images.jpg.large_image_url
+  }
+  if (anime.value.images.jpg?.image_url) {
+    return anime.value.images.jpg.image_url
+  }
+
+  return null
+}
+
+const getAiredString = () => {
+  if (!anime.value?.aired) return 'N/A'
+
+  if (anime.value.aired.string) {
+    return anime.value.aired.string
+  }
+
+  const from = anime.value.aired.from
+  const to = anime.value.aired.to
+
+  if (!from && !to) return 'N/A'
+  if (!to) return `${formatDate(from)} - ?`
+  if (!from) return `? - ${formatDate(to)}`
+
+  const fromDate = formatDate(from)
+  const toDate = formatDate(to)
+
+  if (fromDate === toDate) return fromDate
+  return `${fromDate} - ${toDate}`
+}
+
+// Helper function to get broadcast day
+const getBroadcastDay = () => {
+  return anime.value?.broadcast?.day || null
+}
+
+// Helper function to get broadcast time
+const getBroadcastTime = () => {
+  if (!anime.value?.broadcast) return null
+
+  const time = anime.value.broadcast.time
+  const timezone = anime.value.broadcast.timezone
+
+  if (time && timezone) {
+    return `${time} (${timezone})`
+  }
+  if (time) {
+    return time
+  }
+
+  return anime.value.broadcast.string || null
+}
+
+// Helper function to get studios list
+const getStudiosList = () => {
+  if (!anime.value?.studios || !Array.isArray(anime.value.studios)) return []
+  return anime.value.studios.map((studio) => studio.name).filter((name) => name)
+}
+
+// Helper function to get producers list
+const getProducersList = () => {
+  if (!anime.value?.producers || !Array.isArray(anime.value.producers)) return []
+  return anime.value.producers.map((producer) => producer.name).filter((name) => name)
+}
+
+// Helper function to get licensors list
+const getLicensorsList = () => {
+  if (!anime.value?.licensors || !Array.isArray(anime.value.licensors)) return []
+  return anime.value.licensors.map((licensor) => licensor.name).filter((name) => name)
+}
+
+// Helper function to get genres list
+const getGenresList = () => {
+  if (!anime.value?.genres || !Array.isArray(anime.value.genres)) return []
+  return anime.value.genres.map((genre) => genre.name).filter((name) => name)
+}
+
+// Helper function to get themes list
+const getThemesList = () => {
+  if (!anime.value?.themes || !Array.isArray(anime.value.themes)) return []
+  return anime.value.themes.map((theme) => theme.name).filter((name) => name)
+}
+
+// Helper function to get demographics list
+const getDemographicsList = () => {
+  if (!anime.value?.demographics || !Array.isArray(anime.value.demographics)) return []
+  return anime.value.demographics.map((demo) => demo.name).filter((name) => name)
+}
+
+// Helper function to get opening themes
+const getOpeningThemes = () => {
+  if (!anime.value?.theme?.openings || !Array.isArray(anime.value.theme.openings)) return []
+  return anime.value.theme.openings
+}
+
+// Helper function to get ending themes
+const getEndingThemes = () => {
+  if (!anime.value?.theme?.endings || !Array.isArray(anime.value.theme.endings)) return []
+  return anime.value.theme.endings
+}
+
+// Helper function to get streaming platforms
+const getStreamingPlatforms = () => {
+  if (!anime.value?.streaming || !Array.isArray(anime.value.streaming)) return []
+  return anime.value.streaming
+}
+
+// Helper function to get relation type for a specific entry
+const getRelationForEntry = (malId) => {
+  if (!anime.value?.relations) return ''
+
+  for (const relation of anime.value.relations) {
+    const entry = relation.entry.find((e) => e.mal_id === malId)
+    if (entry) return relation.relation
+  }
+  return ''
+}
+
+// Helper function to get recommendation image URL
+const getRecommendationImageUrl = (entry) => {
+  if (!entry?.images) return getPlaceholderImage({ type: 'anime' })
+
+  // Try different image formats in order of preference
+  if (entry.images.webp?.large_image_url) {
+    return entry.images.webp.large_image_url
+  }
+  if (entry.images.webp?.image_url) {
+    return entry.images.webp.image_url
+  }
+  if (entry.images.jpg?.large_image_url) {
+    return entry.images.jpg.large_image_url
+  }
+  if (entry.images.jpg?.image_url) {
+    return entry.images.jpg.image_url
+  }
+
+  return getPlaceholderImage({ type: 'anime' })
+}
+
+// Handle image error for recommendation images
+const handleRecommendationImageError = (event, entry) => {
+  event.target.src = getPlaceholderImage({ type: 'anime' })
+}
+
+// Helper function to get placeholder image
+const getPlaceholderImage = (entry) => {
+  return `https://via.placeholder.com/200x280/374151/f3f4f6?text=${encodeURIComponent(entry.type)}`
+}
+
+// Handle image error for relation images
+const handleRelationImageError = (entry) => {
+  // Remove the failed image from relationImages so placeholder is shown
+  if (relationImages.value[entry.mal_id]) {
+    delete relationImages.value[entry.mal_id]
+  }
+}
+
+// Load relation image from API
+const loadRelationImage = async (entry) => {
+  try {
+    const baseUrl = 'http://127.0.0.1:8000'
+    let endpoint = ''
+
+    if (entry.type === 'anime') {
+      endpoint = `${baseUrl}/anime/${entry.mal_id}/image`
+    } else if (entry.type === 'manga') {
+      endpoint = `${baseUrl}/manga/${entry.mal_id}/image`
+    } else {
+      return // Unknown type, will use placeholder
+    }
+
+    const response = await axios.get(endpoint)
+    if (response.data && response.data.image_url) {
+      relationImages.value[entry.mal_id] = response.data.image_url
+    }
+  } catch (error) {
+    console.log(`Failed to load image for ${entry.type} ${entry.mal_id}:`, error)
+    // Image will remain as placeholder
+  }
+}
+
+// Load all relation images
+const loadRelationImages = async () => {
+  if (!anime.value?.relations) return
+
+  const promises = []
+  for (const relation of anime.value.relations) {
+    for (const entry of relation.entry) {
+      promises.push(loadRelationImage(entry))
+    }
+  }
+
+  await Promise.all(promises)
+}
 
 const formatScore = (score) => {
   if (!score) return 'N/A'
-  return (score * 1).toFixed(1)
+  return parseFloat(score).toFixed(1)
 }
 
 const formatNumber = (num) => {
   if (!num) return 'N/A'
-  return num.toLocaleString()
+  return parseInt(num).toLocaleString()
 }
 
 const formatDate = (dateStr) => {
@@ -469,18 +923,6 @@ const formatDate = (dateStr) => {
   } catch {
     return dateStr
   }
-}
-
-const formatDateRange = (from, to) => {
-  if (!from && !to) return 'N/A'
-  if (!to) return `${formatDate(from)} - ?`
-  if (!from) return `? - ${formatDate(to)}`
-
-  const fromDate = formatDate(from)
-  const toDate = formatDate(to)
-
-  if (fromDate === toDate) return fromDate
-  return `${fromDate} - ${toDate}`
 }
 
 const getStatusColor = (status) => {
@@ -499,6 +941,13 @@ const handleImageError = (event) => {
   event.target.src = '/placeholder-anime.jpg'
 }
 
+const getTrailerUrl = (trailer) => {
+  if (!trailer || !trailer.youtube_id) return ''
+
+  // Remove autoplay=1 and construct URL without autoplay
+  return `https://www.youtube.com/embed/${trailer.youtube_id}?enablejsapi=1&wmode=opaque`
+}
+
 const loadAnime = async () => {
   loading.value = true
   error.value = null
@@ -506,12 +955,37 @@ const loadAnime = async () => {
   try {
     console.log('Fetching anime with ID:', route.params.id)
     const response = await axios.get(`http://127.0.0.1:8000/anime/${route.params.id}`)
-    console.log('API Response:', response.data)
+    console.log('Full API Response:', response.data)
 
     if (response.data && response.data.error) {
       error.value = response.data.error
     } else {
-      anime.value = response.data
+      // Get the anime data
+      let animeData = null
+
+      if (response.data.anime) {
+        console.log('Using response.data.anime')
+        animeData = response.data.anime
+      } else if (response.data.data) {
+        console.log('Using response.data.data')
+        animeData = response.data.data
+      } else {
+        console.log('Using response.data directly')
+        animeData = response.data
+      }
+
+      // Add recommendations from the top level if they exist there
+      if (response.data.recommendations && !animeData.recommendations) {
+        console.log('Adding recommendations from top level')
+        animeData.recommendations = response.data.recommendations
+      }
+
+      console.log('Final anime data recommendations:', animeData.recommendations?.length || 0)
+
+      anime.value = animeData
+
+      // Load relation images after anime data is loaded
+      await loadRelationImages()
     }
   } catch (err) {
     console.error('Error fetching anime detail:', err)
@@ -536,3 +1010,19 @@ onMounted(() => {
   loadAnime()
 })
 </script>
+
+<style scoped>
+:deep(.scrollbar-hide)::-webkit-scrollbar {
+  display: none;
+}
+:deep(.scrollbar-hide) {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+.line-clamp-2 {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+</style>

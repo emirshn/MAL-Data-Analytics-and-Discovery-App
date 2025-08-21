@@ -221,6 +221,29 @@ def safe_json_parse(value):
         print(f"JSON parse error: {value} — {e}")
         return []
     
+import httpx
+from fastapi.responses import JSONResponse
+
+JIKAN_BASE_URL = "https://api.jikan.moe/v4"
+
+@app.get("/anime/{anime_id}")
+async def get_anime_detail(anime_id: int):
+    async with httpx.AsyncClient() as client:
+        detail_response = await client.get(f"{JIKAN_BASE_URL}/anime/{anime_id}/full")
+        if detail_response.status_code != 200:
+            raise HTTPException(status_code=detail_response.status_code, detail="Anime not found")
+
+        detail_data = detail_response.json()
+
+        rec_response = await client.get(f"{JIKAN_BASE_URL}/anime/{anime_id}/recommendations")
+        rec_data = rec_response.json() if rec_response.status_code == 200 else {"data": []}
+
+    result = {
+        "anime": detail_data.get("data", {}),
+        "recommendations": rec_data.get("data", []),
+    }
+
+    return JSONResponse(content=result)
 @app.get("/anime/{anime_id}")
 async def get_anime_detail(anime_id: int):
     anime_row = anime_df[anime_df["id"] == anime_id]
@@ -257,8 +280,8 @@ async def get_anime_detail(anime_id: int):
         "broadcast_timezone": safe_value(row["broadcast_timezone"]),
         "genres": safe_value(row["genres"]).split(",") if not pd.isna(row["genres"]) else [],
         "explicit_genres": safe_json_parse(row.get("explicit_genres")),
-        "demographics": safe_json_parse(row.get("demographics")),
-        "themes": safe_json_parse(row.get("themes")),
+        "demographics": [safe_value(row.get("demographics"))] if not pd.isna(row.get("demographics")) and safe_value(row.get("demographics")) else [],
+        "themes": safe_value(row.get("themes", "")).split(",") if not pd.isna(row.get("themes")) and safe_value(row.get("themes")) else [],
         "studios": safe_value(row["studios"]),
         "producers": safe_value(row["producers"]),
         "licensors": safe_json_parse(row.get("licensors")),
@@ -654,3 +677,31 @@ def get_manga_stats():
         "avg_chapters": round(df['chapters'].mean(), 1) if not df['chapters'].isna().all() else None,
         "avg_volumes": round(df['volumes'].mean(), 1) if not df['volumes'].isna().all() else None,
     }
+
+@app.get("/anime/{anime_id}/image")
+async def get_anime_image(anime_id: int):
+    anime_row = anime_df[anime_df["id"] == anime_id]
+    if anime_row.empty:
+        raise HTTPException(status_code=404, detail="Anime not found")
+    
+    row = anime_row.iloc[0]
+    image_url = safe_value(row.get("image_url")) or safe_value(row.get("thumbnail_url"))
+    
+    return JSONResponse(content={
+        "image_url": image_url,
+        "thumbnail_url": safe_value(row.get("thumbnail_url"))
+    })
+
+@app.get("/manga/{manga_id}/image") 
+async def get_manga_image(manga_id: int):
+    manga_row = manga_df[manga_df["id"] == manga_id] 
+    if manga_row.empty:
+        raise HTTPException(status_code=404, detail="Manga not found")
+        
+    row = manga_row.iloc[0]
+    image_url = safe_value(row.get("image_url")) or safe_value(row.get("thumbnail_url"))
+    
+    return JSONResponse(content={
+        "image_url": image_url,
+        "thumbnail_url": safe_value(row.get("thumbnail_url"))
+    })
