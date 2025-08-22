@@ -2,9 +2,9 @@
   <div class="p-6 pt-20 bg-gray-900 min-h-screen text-white max-w-6xl mx-auto">
     <div v-if="loading" class="text-center">
       <div class="animate-pulse">
-        <div class="text-lg">Loading anime details...</div>
+        <div class="text-lg">Loading manga details...</div>
         <div
-          class="mt-4 w-16 h-16 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto"
+          class="mt-4 w-16 h-16 border-4 border-purple-500 border-t-transparent rounded-full animate-spin mx-auto"
         ></div>
       </div>
     </div>
@@ -13,20 +13,20 @@
       <div class="text-lg">{{ error }}</div>
       <button
         @click="retryLoad"
-        class="mt-4 px-4 py-2 bg-blue-600 rounded hover:bg-blue-700 transition-colors"
+        class="mt-4 px-4 py-2 bg-purple-600 rounded hover:bg-purple-700 transition-colors"
       >
         Retry
       </button>
     </div>
 
-    <div v-else-if="anime" class="space-y-8">
+    <div v-else-if="manga" class="space-y-8">
       <!-- Hero Section with Cover + Main Info -->
       <div class="relative bg-gradient-to-r from-gray-800 via-gray-900 to-black rounded-xl p-6">
         <div class="flex flex-col lg:flex-row gap-8">
           <div class="flex-shrink-0">
             <img
-              :src="getImageUrl() || '/placeholder-anime.jpg'"
-              :alt="anime.title || 'Anime Cover'"
+              :src="getImageUrl() || '/placeholder-manga.jpg'"
+              :alt="manga.title || 'Manga Cover'"
               class="w-64 h-96 rounded-lg shadow-2xl object-cover mx-auto lg:mx-0"
               @error="handleImageError"
             />
@@ -34,53 +34,53 @@
 
           <div class="flex-1 space-y-4">
             <div>
-              <h1 class="text-4xl font-bold mb-2">{{ anime.title || 'Unknown Title' }}</h1>
+              <h1 class="text-4xl font-bold mb-2">{{ manga.title || 'Unknown Title' }}</h1>
               <p
-                v-if="anime.title_english && anime.title_english !== anime.title"
+                v-if="manga.title_english && manga.title_english !== manga.title"
                 class="text-gray-300 text-xl"
               >
-                {{ anime.title_english }}
+                {{ manga.title_english }}
               </p>
-              <p v-if="anime.title_japanese" class="text-gray-400 text-lg">
-                {{ anime.title_japanese }}
+              <p v-if="manga.title_japanese" class="text-gray-400 text-lg">
+                {{ manga.title_japanese }}
               </p>
               <p
-                v-if="anime.title_synonyms && anime.title_synonyms.length"
+                v-if="manga.title_synonyms && manga.title_synonyms.length"
                 class="text-gray-500 text-sm"
               >
                 <strong>Also known as:</strong>
-                {{ anime.title_synonyms.join(', ') }}
+                {{ manga.title_synonyms.join(', ') }}
               </p>
             </div>
 
             <!-- Key Stats Row -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
               <div
-                v-if="anime.score"
+                v-if="manga.score"
                 class="bg-yellow-600 bg-opacity-20 p-3 rounded-lg text-center"
               >
                 <div class="text-yellow-400 text-2xl font-bold">
-                  ★ {{ formatScore(anime.score) }}
+                  ★ {{ formatScore(manga.score) }}
                 </div>
                 <div class="text-xs text-gray-400">Score</div>
               </div>
-              <div v-if="anime.rank" class="bg-purple-600 bg-opacity-20 p-3 rounded-lg text-center">
-                <div class="text-purple-400 text-2xl font-bold">#{{ anime.rank }}</div>
+              <div v-if="manga.rank" class="bg-purple-600 bg-opacity-20 p-3 rounded-lg text-center">
+                <div class="text-purple-400 text-2xl font-bold">#{{ manga.rank }}</div>
                 <div class="text-xs text-gray-400">Rank</div>
               </div>
               <div
-                v-if="anime.popularity"
+                v-if="manga.popularity"
                 class="bg-green-600 bg-opacity-20 p-3 rounded-lg text-center"
               >
-                <div class="text-green-400 text-2xl font-bold">#{{ anime.popularity }}</div>
+                <div class="text-green-400 text-2xl font-bold">#{{ manga.popularity }}</div>
                 <div class="text-xs text-gray-400">Popularity</div>
               </div>
               <div
-                v-if="anime.members"
+                v-if="manga.members"
                 class="bg-blue-600 bg-opacity-20 p-3 rounded-lg text-center"
               >
                 <div class="text-blue-400 text-2xl font-bold">
-                  {{ formatNumber(anime.members) }}
+                  {{ formatNumber(manga.members) }}
                 </div>
                 <div class="text-xs text-gray-400">Members</div>
               </div>
@@ -88,31 +88,39 @@
 
             <!-- Basic Info Grid -->
             <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
-              <div v-if="anime.type" class="flex justify-between">
+              <div v-if="manga.type" class="flex justify-between">
                 <span class="text-gray-400">Type:</span>
-                <span class="font-medium">{{ anime.type }}</span>
+                <span class="font-medium">{{ manga.type }}</span>
               </div>
-              <div v-if="anime.episodes" class="flex justify-between">
-                <span class="text-gray-400">Episodes:</span>
-                <span class="font-medium">{{ anime.episodes }}</span>
-              </div>
-              <div v-if="anime.status" class="flex justify-between">
+              <div v-if="manga.status" class="flex justify-between">
                 <span class="text-gray-400">Status:</span>
-                <span class="font-medium" :class="getStatusColor(anime.status)">{{
-                  anime.status
+                <span class="font-medium" :class="getStatusColor(manga.status)">{{
+                  manga.status
                 }}</span>
               </div>
-              <div v-if="anime.duration" class="flex justify-between">
-                <span class="text-gray-400">Duration:</span>
-                <span class="font-medium">{{ anime.duration }}</span>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Chapters:</span>
+                <span class="font-medium">{{ manga.chapters || 'Ongoing' }}</span>
               </div>
-              <div v-if="anime.rating" class="flex justify-between">
-                <span class="text-gray-400">Rating:</span>
-                <span class="font-medium">{{ anime.rating }}</span>
+              <div class="flex justify-between">
+                <span class="text-gray-400">Volumes:</span>
+                <span class="font-medium">{{ manga.volumes || 'Ongoing' }}</span>
               </div>
-              <div v-if="anime.source" class="flex justify-between">
-                <span class="text-gray-400">Source:</span>
-                <span class="font-medium">{{ anime.source }}</span>
+
+              <div v-if="getAuthorsList().length" class="flex justify-between">
+                <span class="text-gray-400"
+                  >Author{{ getAuthorsList().length > 1 ? 's' : '' }}:</span
+                >
+                <span class="font-medium truncate" :title="getAuthorsList().join(', ')"
+                  >{{ getAuthorsList().slice(0, 2).join(', ')
+                  }}{{ getAuthorsList().length > 2 ? '...' : '' }}</span
+                >
+              </div>
+              <div v-if="getSerializationsList().length" class="flex justify-between">
+                <span class="text-gray-400">Magazine:</span>
+                <span class="font-medium truncate" :title="getSerializationsList().join(', ')">{{
+                  getSerializationsList()[0]
+                }}</span>
               </div>
             </div>
           </div>
@@ -121,7 +129,7 @@
 
       <!-- Synopsis Section -->
       <div class="bg-gray-800 rounded-xl p-6">
-        <h2 class="text-2xl font-semibold mb-4 text-blue-400 flex items-center">
+        <h2 class="text-2xl font-semibold mb-4 text-purple-400 flex items-center">
           <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
               stroke-linecap="round"
@@ -134,83 +142,58 @@
         </h2>
         <div class="prose prose-invert max-w-none">
           <p class="text-gray-300 leading-relaxed text-base">
-            {{ anime.synopsis || anime.background || 'No synopsis available.' }}
+            {{ manga.synopsis || manga.background || 'No synopsis available.' }}
           </p>
         </div>
       </div>
 
-      <!-- Air Dates and Production Info -->
+      <!-- Publication and Author Info -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <!-- Broadcast Information -->
+        <!-- Publication Information -->
         <div class="bg-gray-800 rounded-xl p-6">
-          <h3 class="text-xl font-semibold mb-4 text-green-400">Broadcast Information</h3>
+          <h3 class="text-xl font-semibold mb-4 text-green-400">Publication Information</h3>
           <div class="space-y-3 text-sm">
-            <div v-if="anime.year" class="flex justify-between">
-              <span class="text-gray-400">Year:</span>
-              <span class="font-medium">{{ anime.year }}</span>
+            <div v-if="manga.published" class="flex justify-between">
+              <span class="text-gray-400">Published:</span>
+              <span class="font-medium">{{ getPublishedString() }}</span>
             </div>
-            <div v-if="anime.season" class="flex justify-between">
-              <span class="text-gray-400">Season:</span>
-              <span class="font-medium capitalize">{{ anime.season }}</span>
-            </div>
-            <div v-if="anime.aired" class="flex justify-between">
-              <span class="text-gray-400">Aired:</span>
-              <span class="font-medium">{{ getAiredString() }}</span>
-            </div>
-            <div v-if="getBroadcastDay()" class="flex justify-between">
-              <span class="text-gray-400">Broadcast Day:</span>
-              <span class="font-medium">{{ getBroadcastDay() }}</span>
-            </div>
-            <div v-if="getBroadcastTime()" class="flex justify-between">
-              <span class="text-gray-400">Broadcast Time:</span>
-              <span class="font-medium">{{ getBroadcastTime() }}</span>
-            </div>
-            <div v-if="anime.airing !== undefined" class="flex justify-between">
-              <span class="text-gray-400">Currently Airing:</span>
-              <span class="font-medium" :class="anime.airing ? 'text-green-400' : 'text-red-400'">
-                {{ anime.airing ? 'Yes' : 'No' }}
+            <div v-if="manga.publishing !== undefined" class="flex justify-between">
+              <span class="text-gray-400">Currently Publishing:</span>
+              <span
+                class="font-medium"
+                :class="manga.publishing ? 'text-green-400' : 'text-red-400'"
+              >
+                {{ manga.publishing ? 'Yes' : 'No' }}
               </span>
             </div>
           </div>
         </div>
 
-        <!-- Production Information -->
+        <!-- Authors and Publishers -->
         <div class="bg-gray-800 rounded-xl p-6">
-          <h3 class="text-xl font-semibold mb-4 text-orange-400">Production</h3>
+          <h3 class="text-xl font-semibold mb-4 text-orange-400">Authors & Publishers</h3>
           <div class="space-y-3 text-sm">
-            <div v-if="getStudiosList().length" class="space-y-1">
-              <span class="text-gray-400 block">Studios:</span>
+            <div v-if="getAuthorsList().length" class="space-y-1">
+              <span class="text-gray-400 block">Authors:</span>
               <div class="flex flex-wrap gap-1">
                 <span
-                  v-for="studio in getStudiosList()"
-                  :key="studio"
+                  v-for="author in getAuthorsList()"
+                  :key="author"
                   class="px-2 py-1 bg-orange-600 rounded text-xs"
                 >
-                  {{ studio }}
+                  {{ author }}
                 </span>
               </div>
             </div>
-            <div v-if="getProducersList().length" class="space-y-1">
-              <span class="text-gray-400 block">Producers:</span>
+            <div v-if="getSerializationsList().length" class="space-y-1">
+              <span class="text-gray-400 block">Serializations:</span>
               <div class="flex flex-wrap gap-1">
                 <span
-                  v-for="producer in getProducersList()"
-                  :key="producer"
+                  v-for="serialization in getSerializationsList()"
+                  :key="serialization"
                   class="px-2 py-1 bg-gray-600 rounded text-xs"
                 >
-                  {{ producer }}
-                </span>
-              </div>
-            </div>
-            <div v-if="getLicensorsList().length" class="space-y-1">
-              <span class="text-gray-400 block">Licensors:</span>
-              <div class="flex flex-wrap gap-1">
-                <span
-                  v-for="licensor in getLicensorsList()"
-                  :key="licensor"
-                  class="px-2 py-1 bg-indigo-600 rounded text-xs"
-                >
-                  {{ licensor }}
+                  {{ serialization }}
                 </span>
               </div>
             </div>
@@ -274,17 +257,17 @@
         <div class="bg-gray-800 rounded-xl p-6">
           <h3 class="text-xl font-semibold mb-4 text-yellow-400">Ratings & Statistics</h3>
           <div class="space-y-3">
-            <div v-if="anime.scored_by" class="flex justify-between text-sm">
+            <div v-if="manga.scored_by" class="flex justify-between text-sm">
               <span class="text-gray-400">Scored by:</span>
-              <span class="font-medium">{{ formatNumber(anime.scored_by) }} users</span>
+              <span class="font-medium">{{ formatNumber(manga.scored_by) }} users</span>
             </div>
-            <div v-if="anime.favorites" class="flex justify-between text-sm">
+            <div v-if="manga.favorites" class="flex justify-between text-sm">
               <span class="text-gray-400">Favorited by:</span>
-              <span class="font-medium">{{ formatNumber(anime.favorites) }} users</span>
+              <span class="font-medium">{{ formatNumber(manga.favorites) }} users</span>
             </div>
-            <div v-if="anime.members" class="flex justify-between text-sm">
+            <div v-if="manga.members" class="flex justify-between text-sm">
               <span class="text-gray-400">Total Members:</span>
-              <span class="font-medium">{{ formatNumber(anime.members) }} users</span>
+              <span class="font-medium">{{ formatNumber(manga.members) }} users</span>
             </div>
           </div>
         </div>
@@ -293,22 +276,22 @@
         <div class="bg-gray-800 rounded-xl p-6">
           <h3 class="text-xl font-semibold mb-4 text-cyan-400">Additional Details</h3>
           <div class="space-y-3 text-sm">
-            <div v-if="anime.approved !== undefined" class="flex justify-between">
+            <div v-if="manga.approved !== undefined" class="flex justify-between">
               <span class="text-gray-400">Approved:</span>
-              <span class="font-medium" :class="anime.approved ? 'text-green-400' : 'text-red-400'">
-                {{ anime.approved ? 'Yes' : 'No' }}
+              <span class="font-medium" :class="manga.approved ? 'text-green-400' : 'text-red-400'">
+                {{ manga.approved ? 'Yes' : 'No' }}
               </span>
             </div>
-            <div v-if="anime.mal_id" class="flex justify-between">
+            <div v-if="manga.mal_id" class="flex justify-between">
               <span class="text-gray-400">MAL ID:</span>
-              <span class="font-medium">{{ anime.mal_id }}</span>
+              <span class="font-medium">{{ manga.mal_id }}</span>
             </div>
           </div>
         </div>
       </div>
 
       <!-- Relations Section -->
-      <div v-if="anime.relations && anime.relations.length" class="bg-gray-800 rounded-xl p-6">
+      <div v-if="manga.relations && manga.relations.length" class="bg-gray-800 rounded-xl p-6">
         <h3 class="text-xl font-semibold mb-6 text-pink-400 flex items-center">
           <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
             <path
@@ -318,12 +301,12 @@
               d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
             ></path>
           </svg>
-          Related Anime
+          Related Media
         </h3>
 
         <!-- Single horizontal scrollable container for all entries -->
         <div class="flex gap-4 overflow-x-auto pb-4">
-          <div v-for="relation in anime.relations" :key="relation.relation" class="flex gap-4">
+          <div v-for="relation in manga.relations" :key="relation.relation" class="flex gap-4">
             <div
               v-for="entry in relation.entry"
               :key="entry.mal_id"
@@ -402,7 +385,7 @@
 
       <!-- Recommendations Section -->
       <div
-        v-if="anime.recommendations && anime.recommendations.length"
+        v-if="manga.recommendations && manga.recommendations.length"
         class="bg-gray-800 rounded-xl p-6"
       >
         <h3 class="text-xl font-semibold mb-6 text-amber-400 flex items-center">
@@ -421,10 +404,10 @@
         <div class="overflow-x-auto overflow-y-hidden">
           <div class="flex gap-4 pb-4 min-w-max">
             <div
-              v-for="recommendation in anime.recommendations"
+              v-for="recommendation in manga.recommendations"
               :key="recommendation.entry.mal_id"
               class="flex-shrink-0 w-40 group cursor-pointer"
-              @click="openAnimeDetail(recommendation)"
+              @click="openMangaDetail(recommendation)"
             >
               <div
                 class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full"
@@ -439,7 +422,7 @@
                   />
                   <div class="absolute top-2 right-2">
                     <span class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded">
-                      ANIME
+                      MANGA
                     </span>
                   </div>
                   <div class="absolute bottom-2 left-2">
@@ -471,112 +454,14 @@
         </div>
       </div>
 
-      <!-- Opening & Ending Themes -->
-      <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-        <div v-if="getOpeningThemes().length" class="bg-gray-800 rounded-xl p-6">
-          <h3 class="text-xl font-semibold mb-4 text-emerald-400 flex items-center">
-            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-              ></path>
-            </svg>
-            Opening Themes
-          </h3>
-          <div class="space-y-2">
-            <div
-              v-for="opening in getOpeningThemes()"
-              :key="opening"
-              class="bg-gray-900 p-3 rounded text-sm"
-            >
-              {{ opening }}
-            </div>
-          </div>
-        </div>
-
-        <div v-if="getEndingThemes().length" class="bg-gray-800 rounded-xl p-6">
-          <h3 class="text-xl font-semibold mb-4 text-teal-400 flex items-center">
-            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3"
-              ></path>
-            </svg>
-            Ending Themes
-          </h3>
-          <div class="space-y-2">
-            <div
-              v-for="ending in getEndingThemes()"
-              :key="ending"
-              class="bg-gray-900 p-3 rounded text-sm"
-            >
-              {{ ending }}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Trailer Section -->
-      <div v-if="anime.trailer && anime.trailer.youtube_id" class="bg-gray-800 rounded-xl p-6">
-        <h3 class="text-xl font-semibold mb-4 text-red-400 flex items-center">
-          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-            ></path>
-          </svg>
-          Official Trailer
-        </h3>
-        <div class="aspect-video">
-          <iframe
-            :src="getTrailerUrl(anime.trailer)"
-            class="w-full h-full rounded-lg"
-            frameborder="0"
-            allowfullscreen
-          ></iframe>
-        </div>
-      </div>
-
-      <!-- Streaming Platforms -->
-      <div v-if="getStreamingPlatforms().length" class="bg-gray-800 rounded-xl p-6">
-        <h3 class="text-xl font-semibold mb-4 text-red-400 flex items-center">
-          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-            ></path>
-          </svg>
-          Streaming Platforms
-        </h3>
-        <div class="grid grid-cols-2 md:grid-cols-4 gap-3">
-          <a
-            v-for="platform in getStreamingPlatforms()"
-            :key="platform.name"
-            :href="platform.url"
-            target="_blank"
-            class="bg-gray-600 bg-opacity-20 border border-gray-600 rounded-lg p-3 text-center hover:bg-gray-600 hover:bg-opacity-30 transition-colors cursor-pointer"
-          >
-            <span class="text-white-400 font-medium">{{ platform.name }}</span>
-          </a>
-        </div>
-      </div>
-
       <!-- External Links -->
       <div class="bg-gray-800 rounded-xl p-6">
         <h3 class="text-xl font-semibold mb-4 text-indigo-400">External Links</h3>
         <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
           <!-- Main Links -->
           <a
-            v-if="anime.url"
-            :href="anime.url"
+            v-if="manga.url"
+            :href="manga.url"
             target="_blank"
             class="flex items-center px-4 py-3 bg-indigo-600 rounded-lg hover:bg-indigo-700 transition-colors"
           >
@@ -591,26 +476,9 @@
             MyAnimeList
           </a>
 
-          <a
-            v-if="anime.trailer && anime.trailer.url"
-            :href="anime.trailer.url"
-            target="_blank"
-            class="flex items-center px-4 py-3 bg-red-600 rounded-lg hover:bg-red-700 transition-colors"
-          >
-            <svg class="w-5 h-5 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z"
-              ></path>
-            </svg>
-            Watch Trailer
-          </a>
-
           <!-- External links from the external array -->
           <a
-            v-for="link in anime.external || []"
+            v-for="link in manga.external || []"
             :key="link.name"
             :href="link.url"
             target="_blank"
@@ -653,7 +521,7 @@
         </button>
         <div v-if="showDebug" class="bg-black bg-opacity-50 rounded-lg p-4 overflow-auto">
           <pre class="text-xs text-green-400 whitespace-pre-wrap">{{
-            JSON.stringify(anime, null, 2)
+            JSON.stringify(manga, null, 2)
           }}</pre>
         </div>
       </div>
@@ -673,8 +541,8 @@
           d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"
         ></path>
       </svg>
-      <div class="text-xl font-semibold mb-2">Anime Not Found</div>
-      <p class="text-gray-500">The requested anime could not be found in our database.</p>
+      <div class="text-xl font-semibold mb-2">Manga Not Found</div>
+      <p class="text-gray-500">The requested manga could not be found in our database.</p>
     </div>
   </div>
 </template>
@@ -688,44 +556,44 @@ import { useRouter } from 'vue-router'
 const router = useRouter()
 
 const route = useRoute()
-const anime = ref(null)
+const manga = ref(null)
 const loading = ref(true)
 const error = ref(null)
 const showDebug = ref(false)
 const relationImages = ref({})
 
-const openAnimeDetail = (anime) => {
-  window.location.href = `/anime/${anime.entry.mal_id}`
+const openMangaDetail = (manga) => {
+  window.location.href = `/manga/${manga.entry.mal_id}`
 }
 
 const getImageUrl = () => {
-  if (!anime.value?.images) return null
+  if (!manga.value?.images) return null
 
-  if (anime.value.images.webp?.large_image_url) {
-    return anime.value.images.webp.large_image_url
+  if (manga.value.images.webp?.large_image_url) {
+    return manga.value.images.webp.large_image_url
   }
-  if (anime.value.images.webp?.image_url) {
-    return anime.value.images.webp.image_url
+  if (manga.value.images.webp?.image_url) {
+    return manga.value.images.webp.image_url
   }
-  if (anime.value.images.jpg?.large_image_url) {
-    return anime.value.images.jpg.large_image_url
+  if (manga.value.images.jpg?.large_image_url) {
+    return manga.value.images.jpg.large_image_url
   }
-  if (anime.value.images.jpg?.image_url) {
-    return anime.value.images.jpg.image_url
+  if (manga.value.images.jpg?.image_url) {
+    return manga.value.images.jpg.image_url
   }
 
   return null
 }
 
-const getAiredString = () => {
-  if (!anime.value?.aired) return 'N/A'
+const getPublishedString = () => {
+  if (!manga.value?.published) return 'N/A'
 
-  if (anime.value.aired.string) {
-    return anime.value.aired.string
+  if (manga.value.published.string) {
+    return manga.value.published.string
   }
 
-  const from = anime.value.aired.from
-  const to = anime.value.aired.to
+  const from = manga.value.published.from
+  const to = manga.value.published.to
 
   if (!from && !to) return 'N/A'
   if (!to) return `${formatDate(from)} - ?`
@@ -738,87 +606,43 @@ const getAiredString = () => {
   return `${fromDate} - ${toDate}`
 }
 
-// Helper function to get broadcast day
-const getBroadcastDay = () => {
-  return anime.value?.broadcast?.day || null
+// Helper function to get authors list
+const getAuthorsList = () => {
+  if (!manga.value?.authors || !Array.isArray(manga.value.authors)) return []
+  return manga.value.authors.map((author) => author.name).filter((name) => name)
 }
 
-// Helper function to get broadcast time
-const getBroadcastTime = () => {
-  if (!anime.value?.broadcast) return null
-
-  const time = anime.value.broadcast.time
-  const timezone = anime.value.broadcast.timezone
-
-  if (time && timezone) {
-    return `${time} (${timezone})`
-  }
-  if (time) {
-    return time
-  }
-
-  return anime.value.broadcast.string || null
-}
-
-// Helper function to get studios list
-const getStudiosList = () => {
-  if (!anime.value?.studios || !Array.isArray(anime.value.studios)) return []
-  return anime.value.studios.map((studio) => studio.name).filter((name) => name)
-}
-
-// Helper function to get producers list
-const getProducersList = () => {
-  if (!anime.value?.producers || !Array.isArray(anime.value.producers)) return []
-  return anime.value.producers.map((producer) => producer.name).filter((name) => name)
-}
-
-// Helper function to get licensors list
-const getLicensorsList = () => {
-  if (!anime.value?.licensors || !Array.isArray(anime.value.licensors)) return []
-  return anime.value.licensors.map((licensor) => licensor.name).filter((name) => name)
+// Helper function to get serializations list
+const getSerializationsList = () => {
+  if (!manga.value?.serializations || !Array.isArray(manga.value.serializations)) return []
+  return manga.value.serializations
+    .map((serialization) => serialization.name)
+    .filter((name) => name)
 }
 
 // Helper function to get genres list
 const getGenresList = () => {
-  if (!anime.value?.genres || !Array.isArray(anime.value.genres)) return []
-  return anime.value.genres.map((genre) => genre.name).filter((name) => name)
+  if (!manga.value?.genres || !Array.isArray(manga.value.genres)) return []
+  return manga.value.genres.map((genre) => genre.name).filter((name) => name)
 }
 
 // Helper function to get themes list
 const getThemesList = () => {
-  if (!anime.value?.themes || !Array.isArray(anime.value.themes)) return []
-  return anime.value.themes.map((theme) => theme.name).filter((name) => name)
+  if (!manga.value?.themes || !Array.isArray(manga.value.themes)) return []
+  return manga.value.themes.map((theme) => theme.name).filter((name) => name)
 }
 
 // Helper function to get demographics list
 const getDemographicsList = () => {
-  if (!anime.value?.demographics || !Array.isArray(anime.value.demographics)) return []
-  return anime.value.demographics.map((demo) => demo.name).filter((name) => name)
-}
-
-// Helper function to get opening themes
-const getOpeningThemes = () => {
-  if (!anime.value?.theme?.openings || !Array.isArray(anime.value.theme.openings)) return []
-  return anime.value.theme.openings
-}
-
-// Helper function to get ending themes
-const getEndingThemes = () => {
-  if (!anime.value?.theme?.endings || !Array.isArray(anime.value.theme.endings)) return []
-  return anime.value.theme.endings
-}
-
-// Helper function to get streaming platforms
-const getStreamingPlatforms = () => {
-  if (!anime.value?.streaming || !Array.isArray(anime.value.streaming)) return []
-  return anime.value.streaming
+  if (!manga.value?.demographics || !Array.isArray(manga.value.demographics)) return []
+  return manga.value.demographics.map((demo) => demo.name).filter((name) => name)
 }
 
 // Helper function to get relation type for a specific entry
 const getRelationForEntry = (malId) => {
-  if (!anime.value?.relations) return ''
+  if (!manga.value?.relations) return ''
 
-  for (const relation of anime.value.relations) {
+  for (const relation of manga.value.relations) {
     const entry = relation.entry.find((e) => e.mal_id === malId)
     if (entry) return relation.relation
   }
@@ -827,7 +651,7 @@ const getRelationForEntry = (malId) => {
 
 // Helper function to get recommendation image URL
 const getRecommendationImageUrl = (entry) => {
-  if (!entry?.images) return getPlaceholderImage({ type: 'anime' })
+  if (!entry?.images) return getPlaceholderImage({ type: 'manga' })
 
   // Try different image formats in order of preference
   if (entry.images.webp?.large_image_url) {
@@ -843,12 +667,12 @@ const getRecommendationImageUrl = (entry) => {
     return entry.images.jpg.image_url
   }
 
-  return getPlaceholderImage({ type: 'anime' })
+  return getPlaceholderImage({ type: 'manga' })
 }
 
 // Handle image error for recommendation images
 const handleRecommendationImageError = (event, entry) => {
-  event.target.src = getPlaceholderImage({ type: 'anime' })
+  event.target.src = getPlaceholderImage({ type: 'manga' })
 }
 
 // Helper function to get placeholder image
@@ -896,9 +720,9 @@ const loadRelationImage = async (entry) => {
 }
 
 const loadRelationImages = async () => {
-  if (!anime.value?.relations) return
+  if (!manga.value?.relations) return
 
-  for (const relation of anime.value.relations) {
+  for (const relation of manga.value.relations) {
     for (const entry of relation.entry) {
       await loadRelationImage(entry)
       await sleep(400)
@@ -931,9 +755,11 @@ const formatDate = (dateStr) => {
 
 const getStatusColor = (status) => {
   const statusColors = {
-    'Finished Airing': 'text-green-400',
-    'Currently Airing': 'text-blue-400',
-    'Not yet aired': 'text-yellow-400',
+    Finished: 'text-green-400',
+    Publishing: 'text-blue-400',
+    'On Hiatus': 'text-yellow-400',
+    Discontinued: 'text-red-400',
+    'Not yet published': 'text-yellow-400',
     Completed: 'text-green-400',
     Ongoing: 'text-blue-400',
     Upcoming: 'text-yellow-400',
@@ -942,56 +768,58 @@ const getStatusColor = (status) => {
 }
 
 const handleImageError = (event) => {
-  event.target.src = '/placeholder-anime.jpg'
+  event.target.src = '/placeholder-manga.jpg'
 }
 
-const getTrailerUrl = (trailer) => {
-  if (!trailer || !trailer.youtube_id) return ''
-
-  return `https://www.youtube.com/embed/${trailer.youtube_id}?enablejsapi=1&wmode=opaque`
-}
-
-const loadAnime = async () => {
+const loadManga = async () => {
   loading.value = true
   error.value = null
 
   try {
-    console.log('Fetching anime with ID:', route.params.id)
-    const response = await axios.get(`http://127.0.0.1:8000/anime/${route.params.id}`)
+    console.log('Fetching manga with ID:', route.params.id)
+    const response = await axios.get(`http://127.0.0.1:8000/manga/${route.params.id}`)
     console.log('Full API Response:', response.data)
 
     if (response.data && response.data.error) {
       error.value = response.data.error
     } else {
-      let animeData = null
+      let mangaData = null
 
-      if (response.data.anime) {
-        console.log('Using response.data.anime')
-        animeData = response.data.anime
+      // Handle the nested manga structure
+      if (response.data.manga) {
+        console.log('Using response.data.manga')
+        mangaData = response.data.manga
+
+        // Add recommendations from top level if they exist
+        if (response.data.recommendations && !mangaData.recommendations) {
+          console.log('Adding recommendations from top level')
+          mangaData.recommendations = response.data.recommendations
+        }
       } else if (response.data.data) {
         console.log('Using response.data.data')
-        animeData = response.data.data
+        mangaData = response.data.data
+
+        // Add recommendations from top level if they exist
+        if (response.data.recommendations && !mangaData.recommendations) {
+          console.log('Adding recommendations from top level')
+          mangaData.recommendations = response.data.recommendations
+        }
       } else {
         console.log('Using response.data directly')
-        animeData = response.data
+        mangaData = response.data
       }
 
-      if (response.data.recommendations && !animeData.recommendations) {
-        console.log('Adding recommendations from top level')
-        animeData.recommendations = response.data.recommendations
-      }
+      console.log('Final manga data recommendations:', mangaData.recommendations?.length || 0)
 
-      console.log('Final anime data recommendations:', animeData.recommendations?.length || 0)
-
-      anime.value = animeData
+      manga.value = mangaData
 
       await loadRelationImages()
     }
   } catch (err) {
-    console.error('Error fetching anime detail:', err)
+    console.error('Error fetching manga detail:', err)
 
     if (err.response) {
-      error.value = `Error ${err.response.status}: ${err.response.data?.detail || 'Failed to load anime'}`
+      error.value = `Error ${err.response.status}: ${err.response.data?.detail || 'Failed to load manga'}`
     } else if (err.request) {
       error.value = 'Network error: Could not connect to server'
     } else {
@@ -1003,11 +831,11 @@ const loadAnime = async () => {
 }
 
 const retryLoad = () => {
-  loadAnime()
+  loadManga()
 }
 
 onMounted(() => {
-  loadAnime()
+  loadManga()
 })
 </script>
 

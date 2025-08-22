@@ -21,9 +21,8 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-
 BASE_DIR = Path(__file__).parent.parent
-ANIME_CSV = BASE_DIR / "dataset" / "processed_anime_data.csv"
+ANIME_CSV = BASE_DIR / "dataset" / "animes.csv"
 MANGA_CSV = BASE_DIR / "dataset" / "mangas.csv"
 
 anime_df = pd.read_csv(ANIME_CSV)
@@ -75,49 +74,146 @@ def get_anime(
     if search:
         search_mask = (
             df['title'].str.contains(search, case=False, na=False) |
-            df['title_english'].str.contains(search, case=False, na=False) | df['title_japanese'].str.contains(search, case=False, na=False)
+            df['title_english'].str.contains(search, case=False, na=False) | 
+            df['title_japanese'].str.contains(search, case=False, na=False)
         )
         df = df[search_mask]
 
     # --- Genre filter (works with cleaned array format) ---
     if genre:
         def has_genre(genres_field):
+            if pd.isna(genres_field):
+                return False
             genres_list = parse_array_field(genres_field)
-            return any(g.lower() == genre.lower() for g in genres_list)
+            for genre_item in genres_list:
+                if isinstance(genre_item, dict) and 'name' in genre_item:
+                    genre_name = genre_item['name']
+                    if genre_name and genre_name.lower() == genre.lower():
+                        return True
+                elif isinstance(genre_item, str) and genre_item.lower() == genre.lower():
+                    return True
+            return False
         
         df = df[df['genres'].apply(has_genre)]
 
-    # --- Year filter (using cleaned year field) ---
-    if year:
-        df = df[df['year'] == year]
+    # --- Year filter (robust handling of year field) ---
+    if year is not None:
+        def matches_year(row):
+            # First try the direct year column
+            year_val = row.get('year')
+            if pd.notna(year_val):
+                try:
+                    # Handle both string and numeric year values
+                    if isinstance(year_val, str):
+                        # Remove any non-numeric characters and try to parse
+                        year_clean = ''.join(filter(str.isdigit, str(year_val)))
+                        if year_clean:
+                            return int(year_clean) == year
+                    else:
+                        return int(float(year_val)) == year
+                except (ValueError, TypeError):
+                    pass
+            
+            # Fallback: extract year from aired_from if year column is empty/invalid
+            aired_from = row.get('aired_from')
+            if pd.notna(aired_from):
+                try:
+                    if isinstance(aired_from, str):
+                        import datetime
+                        # Handle different date formats
+                        aired_from_clean = aired_from.replace('Z', '+00:00')
+                        parsed_date = datetime.datetime.fromisoformat(aired_from_clean)
+                        return parsed_date.year == year
+                except Exception as e:
+                    # If datetime parsing fails, try to extract year with regex
+                    try:
+                        import re
+                        year_match = re.search(r'\b(\d{4})\b', str(aired_from))
+                        if year_match:
+                            return int(year_match.group(1)) == year
+                    except:
+                        pass
+            
+            return False
+        
+        year_mask = df.apply(matches_year, axis=1)
+        df = df[year_mask]
+        
+        # Debug: print how many results we got
+        print(f"Year filter {year}: Found {len(df)} results")
 
     # --- Format (type) filter ---
     if format:
-        df = df[df['type'].str.lower() == format.lower()]
+        def safe_type_compare(type_val):
+            if pd.isna(type_val):
+                return False
+            return str(type_val).lower() == format.lower()
+        df = df[df['type'].apply(safe_type_compare)]
 
     # --- Season filter ---
     if season:
-        df = df[df['season'].str.lower() == season.lower()]
+        def safe_season_compare(season_val):
+            if pd.isna(season_val):
+                return False
+            return str(season_val).lower() == season.lower()
+        df = df[df['season'].apply(safe_season_compare)]
 
     # --- Status filter ---
     if status:
-        df = df[df['status'].str.lower() == status.lower()]
+        def safe_status_compare(status_val):
+            if pd.isna(status_val):
+                return False
+            return str(status_val).lower() == status.lower()
+        df = df[df['status'].apply(safe_status_compare)]
 
     # --- Score filter ---
     if min_score is not None:
         df = df[df['score'] >= min_score]
 
-    # --- Episode type filter (using computed field) ---
+    # --- Episode type filter (compute from episodes and type) ---
     if episode_type:
-        df = df[df['episode_type'] == episode_type.lower()]
+        def get_episode_type(row):
+            episodes = row.get('episodes')
+            anime_type_raw = row.get('type')
+            anime_type = str(anime_type_raw).lower() if pd.notna(anime_type_raw) else ''
+            
+            if pd.isna(episodes) or episodes == 0:
+                return 'unknown'
+            
+            try:
+                ep_count = int(float(episodes))
+                if anime_type == 'movie':
+                    return 'movie'
+                elif ep_count == 1:
+                    return 'single'
+                elif ep_count <= 12:
+                    return 'short'
+                else:
+                    return 'long'
+            except (ValueError, TypeError):
+                return 'unknown'
+        
+        df['computed_episode_type'] = df.apply(get_episode_type, axis=1)
+        df = df[df['computed_episode_type'] == episode_type.lower()]
 
-    # --- Completed only filter (using computed field) ---
+    # --- Completed only filter (compute from status) ---
     if completed_only is not None:
-        df = df[df['is_completed'] == completed_only]
+        def is_completed(status_val):
+            if pd.isna(status_val):
+                return False
+            status_lower = str(status_val).lower()
+            return status_lower in ['finished airing', 'completed']
+        
+        df['computed_is_completed'] = df['status'].apply(is_completed)
+        df = df[df['computed_is_completed'] == completed_only]
 
     # --- Sort by score (prioritizing items with scores) ---
+    # Create computed columns for sorting
     df['score_filled'] = df['score'].fillna(0)
+    df['has_score'] = df['score'].notna()
     df['has_score_int'] = df['has_score'].astype(int)
+    
+    # Sort by has_score first (items with scores), then by score value
     df = df.sort_values(by=['has_score_int', 'score_filled'], ascending=[False, False])
 
     # --- Build results ---
@@ -125,31 +221,113 @@ def get_anime(
     total_count = len(df)
     
     for _, row in df.iloc[offset:offset+limit].iterrows():
-        # Parse streaming platforms
-        streaming_platforms = parse_array_field(row.get('streaming_platforms', []))
+        # Parse streaming platforms - use 'streaming' column from CSV
+        streaming_data = row.get('streaming', [])
+        if pd.isna(streaming_data):
+            streaming_platforms = []
+        else:
+            streaming_platforms = parse_array_field(streaming_data)
         
-        # Parse genres for response
-        genres = parse_array_field(row.get('genres', []))
+        # Parse genres for response - extract names from dictionaries
+        genres_raw = parse_array_field(row.get('genres', []))
+        genres = []
+        for genre_item in genres_raw:
+            if isinstance(genre_item, dict) and 'name' in genre_item:
+                genres.append(genre_item['name'])
+            elif isinstance(genre_item, str):
+                genres.append(genre_item)
+        
+        # Extract image URL from images JSON
+        images_data = row.get('images')
+        image_url = None
+        thumbnail_url = None
+        
+        if pd.notna(images_data):
+            try:
+                import json
+                # Parse the JSON string directly
+                if isinstance(images_data, str):
+                    images_dict = json.loads(images_data)
+                else:
+                    images_dict = images_data
+                
+                if isinstance(images_dict, dict):
+                    # Try webp first, then jpg
+                    if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
+                        image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
+                        thumbnail_url = images_dict['webp'].get('small_image_url')
+                    elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
+                        image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
+                        thumbnail_url = images_dict['jpg'].get('small_image_url')
+            except (json.JSONDecodeError, KeyError, TypeError) as e:
+                print(f"Error parsing images for anime {row.get('mal_id')}: {e}")
+                pass
+        
+        # Compute episode type for response
+        episodes_val = row.get('episodes')
+        anime_type_raw = row.get('type')
+        anime_type = str(anime_type_raw).lower() if pd.notna(anime_type_raw) else ''
+        episode_type_computed = 'unknown'
+        
+        if pd.notna(episodes_val) and episodes_val != 0:
+            try:
+                ep_count = int(float(episodes_val))
+                if anime_type == 'movie':
+                    episode_type_computed = 'movie'
+                elif ep_count == 1:
+                    episode_type_computed = 'single'
+                elif ep_count <= 12:
+                    episode_type_computed = 'short'
+                else:
+                    episode_type_computed = 'long'
+            except (ValueError, TypeError):
+                pass
+        
+        # Compute is_completed for response
+        status_val = row.get('status')
+        is_completed_computed = False
+        if pd.notna(status_val):
+            status_lower = str(status_val).lower()
+            is_completed_computed = status_lower in ['finished airing', 'completed']
+        
+        # Create synopsis_short from synopsis if available
+        synopsis = safe_value(row.get('synopsis'))
+        synopsis_short = None
+        if synopsis and len(synopsis) > 200:
+            synopsis_short = synopsis[:197] + "..."
+        elif synopsis:
+            synopsis_short = synopsis
+        
+        # Parse studios from studios column
+        studios_data = row.get('studios', [])
+        studios = []
+        if pd.notna(studios_data):
+            studios_raw = parse_array_field(studios_data)
+            for studio_item in studios_raw:
+                if isinstance(studio_item, dict) and 'name' in studio_item:
+                    studios.append(studio_item['name'])
+                elif isinstance(studio_item, str):
+                    studios.append(studio_item)
+        
+        studio_name = studios[0] if studios else None
         
         results.append({
-            "id": safe_value(row.get('id')),
+            "id": safe_value(row.get('mal_id')),
             "title": safe_value(row.get('title')),
             "title_english": safe_value(row.get('title_english')),
-            "image_url": safe_value(row.get('image_url')),
-            "thumbnail_url": safe_value(row.get('thumbnail_url')),
+            "image_url": image_url,
+            "thumbnail_url": thumbnail_url,
             "year": safe_value(row.get('year')),
             "score": safe_value(row.get('score')),
             "episodes": safe_value(row.get('episodes')),
-            "episode_type": safe_value(row.get('episode_type')),
+            "episode_type": episode_type_computed,
             "status": safe_value(row.get('status')),
             "type": safe_value(row.get('type')),
             "genres": genres,
-            "synopsis_short": safe_value(row.get('synopsis_short')),
-            "streaming_platforms": streaming_platforms,
-            "is_completed": safe_value(row.get('is_completed')),
-            "has_score": safe_value(row.get('has_score')),
+            "is_completed": is_completed_computed,
+            "has_score": safe_value(row.get('has_score', pd.notna(row.get('score')))),
             "url": safe_value(row.get('url')),
-            "studio": safe_value(row.get('studios')),
+            "studio": studio_name,
             "season": safe_value(row.get('season')),
         })
 
@@ -163,7 +341,6 @@ def get_anime(
             "has_prev": offset > 0
         }
     }
-
 @app.get("/anime/filters")
 def get_anime_filters():
     """Get all available filter options"""
@@ -173,11 +350,42 @@ def get_anime_filters():
     genres = set()
     for genre_field in df['genres'].dropna():
         genre_list = parse_array_field(genre_field)
-        genres.update(genre_list)
-    genres = sorted([g for g in genres if g])  # Remove empty strings
+        # Extract genre names from dictionaries
+        for genre_item in genre_list:
+            if isinstance(genre_item, dict) and 'name' in genre_item:
+                genre_name = genre_item['name']
+                if genre_name:  # Only add non-empty names
+                    genres.add(genre_name)
+            elif isinstance(genre_item, str) and genre_item:
+                # Handle case where genres might be stored as strings
+                genres.add(genre_item)
+    
+    genres = sorted([g for g in genres if g])  # Remove empty strings and sort
 
-    # --- Years ---
-    years = sorted(df['year'].dropna().unique().tolist(), reverse=True)
+    # --- Years (robust extraction) ---
+    years = set()
+    
+    # Extract from year column first
+    for year_val in df['year'].dropna():
+        try:
+            year_int = int(float(year_val))
+            if 1900 <= year_int <= 2030:  # Reasonable range
+                years.add(year_int)
+        except (ValueError, TypeError):
+            pass
+    
+    # Fallback: extract from aired_from if year column has gaps
+    for aired_from in df['aired_from'].dropna():
+        try:
+            if isinstance(aired_from, str):
+                import datetime
+                parsed_date = datetime.datetime.fromisoformat(aired_from.replace('Z', '+00:00'))
+                if 1900 <= parsed_date.year <= 2030:
+                    years.add(parsed_date.year)
+        except:
+            pass
+    
+    years = sorted(list(years), reverse=True)
 
     # --- Seasons ---
     seasons = sorted([s for s in df['season'].dropna().unique().tolist() if s])
@@ -188,8 +396,10 @@ def get_anime_filters():
     # --- Statuses ---
     statuses = sorted([s for s in df['status'].dropna().unique().tolist() if s])
 
-    # --- Episode Types ---
-    episode_types = sorted([et for et in df['episode_type'].dropna().unique().tolist() if et])
+    # --- Episode Types (if column exists) ---
+    episode_types = []
+    if 'episode_type' in df.columns:
+        episode_types = sorted([et for et in df['episode_type'].dropna().unique().tolist() if et])
 
     # --- Score ranges ---
     score_ranges = [
@@ -244,94 +454,6 @@ async def get_anime_detail(anime_id: int):
     }
 
     return JSONResponse(content=result)
-@app.get("/anime/{anime_id}")
-async def get_anime_detail(anime_id: int):
-    anime_row = anime_df[anime_df["id"] == anime_id]
-    if anime_row.empty:
-        raise HTTPException(status_code=404, detail="Anime not found")
-
-    row = anime_row.iloc[0]
-
-    return JSONResponse(content={
-        "id": int(row["id"]),
-        "title": safe_value(row["title"]),
-        "title_english": safe_value(row["title_english"]),
-        "title_japanese": safe_value(row["title_japanese"]),
-        "title_synonyms": safe_json_parse(row.get("title_synonyms")),
-        "type": safe_value(row["type"]),
-        "episodes": int(row["episodes"]) if not pd.isna(row["episodes"]) else None,
-        "status": safe_value(row["status"]),
-        "score": float(row["score"]) if not pd.isna(row["score"]) else None,
-        "rank": int(row["rank"]) if not pd.isna(row["rank"]) else None,
-        "popularity": int(row["popularity"]) if not pd.isna(row["popularity"]) else None,
-        "members": int(row["members"]) if not pd.isna(row["members"]) else None,
-        "favorites": int(row["favorites"]) if not pd.isna(row["favorites"]) else None,
-        "scored_by": int(row["scored_by"]) if not pd.isna(row["scored_by"]) else None,
-        "rating": safe_value(row["rating"]),
-        "year": int(row["year"]) if not pd.isna(row["year"]) else None,
-        "season": safe_value(row["season"]),
-        "source": safe_value(row["source"]),
-        "duration": safe_value(row["duration"]),
-        "airing": bool(row["airing"]),
-        "aired_from": safe_value(row["aired_from"]),
-        "aired_to": safe_value(row["aired_to"]),
-        "broadcast_day": safe_value(row["broadcast_day"]),
-        "broadcast_time": safe_value(row["broadcast_time"]),
-        "broadcast_timezone": safe_value(row["broadcast_timezone"]),
-        "genres": safe_value(row["genres"]).split(",") if not pd.isna(row["genres"]) else [],
-        "explicit_genres": safe_json_parse(row.get("explicit_genres")),
-        "demographics": [safe_value(row.get("demographics"))] if not pd.isna(row.get("demographics")) and safe_value(row.get("demographics")) else [],
-        "themes": safe_value(row.get("themes", "")).split(",") if not pd.isna(row.get("themes")) and safe_value(row.get("themes")) else [],
-        "studios": safe_value(row["studios"]),
-        "producers": safe_value(row["producers"]),
-        "licensors": safe_json_parse(row.get("licensors")),
-        "streaming_platforms": safe_value(row["streaming_platforms"]).split(",") if not pd.isna(row["streaming_platforms"]) else [],
-        "synopsis": safe_value(row["synopsis"]),
-        "synopsis_short": safe_value(row["synopsis_short"]),
-        "background": safe_value(row["background"]),
-        "relations": safe_json_parse(row.get("relations")),
-        "openings": safe_json_parse(row.get("openings")),
-        "endings": safe_json_parse(row.get("endings")),
-        "image_url": safe_value(row["image_url"]),
-        "thumbnail_url": safe_value(row["thumbnail_url"]),
-        "trailer": safe_json_parse(row.get("trailer")),
-        "external": safe_json_parse(row.get("external")),
-        "has_score": bool(row["has_score"]),
-        "is_completed": bool(row["is_completed"]),
-        "episode_type": safe_value(row["episode_type"])
-     })
-
-@app.get("/anime/stats")
-def get_anime_stats():
-    """Get dataset statistics"""
-    df = anime_df.copy()
-    
-    total_anime = len(df)
-    with_scores = len(df[df['has_score'] == True])
-    completed = len(df[df['is_completed'] == True])
-    
-    # Top genres
-    genre_counts = {}
-    for genre_field in df['genres'].dropna():
-        genre_list = parse_array_field(genre_field)
-        for genre in genre_list:
-            if genre:
-                genre_counts[genre] = genre_counts.get(genre, 0) + 1
-    
-    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    
-    return {
-        "total_anime": total_anime,
-        "with_scores": with_scores,
-        "completed": completed,
-        "score_percentage": round((with_scores / total_anime) * 100, 1),
-        "completed_percentage": round((completed / total_anime) * 100, 1),
-        "top_genres": [{"name": name, "count": count} for name, count in top_genres],
-        "year_range": {
-            "min": int(df['year'].min()) if not df['year'].isna().all() else None,
-            "max": int(df['year'].max()) if not df['year'].isna().all() else None
-        }
-    }
 
 @app.get("/manga")
 def get_manga(
@@ -351,6 +473,7 @@ def get_manga(
     max_chapters: int = None,
     min_volumes: int = None,
     max_volumes: int = None,
+    year: int = None,  # New year parameter
 ):
     df = manga_df.copy()
 
@@ -418,6 +541,49 @@ def get_manga(
     # --- Publishing filter ---
     if publishing is not None:
         df = df[df['publishing'] == publishing]
+
+    # --- Year filter ---
+    if year is not None:
+        def matches_year(row):
+            # Check published_from column first
+            published_from = row.get('published_from')
+            if pd.notna(published_from):
+                try:
+                    if isinstance(published_from, str):
+                        import datetime
+                        parsed_date = datetime.datetime.fromisoformat(published_from.replace('Z', '+00:00'))
+                        return parsed_date.year == year
+                except:
+                    pass
+            
+            # Fallback: check if there's a published column (for compatibility)
+            published = row.get('published')
+            if pd.notna(published):
+                published_data = safe_json_parse(published)
+                
+                if isinstance(published_data, dict):
+                    from_date = published_data.get('from')
+                    if from_date:
+                        try:
+                            if isinstance(from_date, str):
+                                import datetime
+                                parsed_date = datetime.datetime.fromisoformat(from_date.replace('Z', '+00:00'))
+                                return parsed_date.year == year
+                        except:
+                            pass
+                
+                elif isinstance(published_data, str):
+                    try:
+                        import re
+                        year_match = re.search(r'\b(\d{4})\b', published_data)
+                        if year_match:
+                            return int(year_match.group(1)) == year
+                    except:
+                        pass
+            
+            return False
+        
+        df = df[df.apply(matches_year, axis=1)]
 
     # --- Chapters filter ---
     if min_chapters is not None:
@@ -555,6 +721,48 @@ def get_manga_filters():
     top_serials = sorted(serial_counts.items(), key=lambda x: x[1], reverse=True)[:30]
     serializations = [name for name, _ in top_serials]
 
+    # --- Years ---
+    years = set()
+    
+    # Extract years from published_from column
+    for published_from in df['published_from'].dropna():
+        try:
+            if isinstance(published_from, str):
+                import datetime
+                parsed_date = datetime.datetime.fromisoformat(published_from.replace('Z', '+00:00'))
+                years.add(parsed_date.year)
+        except:
+            pass
+    
+    # Fallback: if there's a published column, extract from there too
+    if 'published' in df.columns:
+        for published_field in df['published'].dropna():
+            published_data = safe_json_parse(published_field)
+            
+            if isinstance(published_data, dict):
+                from_date = published_data.get('from')
+                if from_date:
+                    try:
+                        if isinstance(from_date, str):
+                            import datetime
+                            parsed_date = datetime.datetime.fromisoformat(from_date.replace('Z', '+00:00'))
+                            years.add(parsed_date.year)
+                    except:
+                        pass
+            
+            elif isinstance(published_data, str):
+                try:
+                    import re
+                    year_matches = re.findall(r'\b(\d{4})\b', published_data)
+                    for year_match in year_matches:
+                        year_val = int(year_match)
+                        if 1900 <= year_val <= 2030:
+                            years.add(year_val)
+                except:
+                    pass
+    
+    years = sorted([y for y in years if y], reverse=True)
+
     # --- Score ranges ---
     score_ranges = [
         {"label": "9.0+", "min": 9.0},
@@ -586,122 +794,67 @@ def get_manga_filters():
         "themes": themes,
         "authors": authors,
         "serializations": serializations,
+        "years": years,  # New years array
         "score_ranges": score_ranges,
         "chapter_ranges": chapter_ranges,
         "volume_ranges": volume_ranges
     }
-
 @app.get("/manga/{manga_id}")
 async def get_manga_detail(manga_id: int):
-    manga_row = manga_df[manga_df["mal_id"] == manga_id]
-    if manga_row.empty:
-        raise HTTPException(status_code=404, detail="Manga not found")
+    async with httpx.AsyncClient() as client:
+        detail_response = await client.get(f"{JIKAN_BASE_URL}/manga/{manga_id}/full")
+        if detail_response.status_code != 200:
+            raise HTTPException(status_code=detail_response.status_code, detail="Manga not found")
 
-    row = manga_row.iloc[0]
+        detail_data = detail_response.json()
 
-    return {
-        "mal_id": int(row["mal_id"]),
-        "url": safe_value(row["url"]),
-        "title": safe_value(row["title"]),
-        "title_english": safe_value(row["title_english"]),
-        "title_japanese": safe_value(row["title_japanese"]),
-        "title_synonyms": safe_json_parse(row.get("title_synonyms")),
-        "type": safe_value(row["type"]),
-        "chapters": int(row["chapters"]) if not pd.isna(row["chapters"]) else None,
-        "volumes": int(row["volumes"]) if not pd.isna(row["volumes"]) else None,
-        "status": safe_value(row["status"]),
-        "publishing": bool(row["publishing"]),
-        "published_from": safe_value(row["published_from"]),
-        "published_to": safe_value(row["published_to"]),
-        "score": float(row["score"]) if not pd.isna(row["score"]) else None,
-        "scored_by": int(row["scored_by"]) if not pd.isna(row["scored_by"]) else None,
-        "rank": int(row["rank"]) if not pd.isna(row["rank"]) else None,
-        "popularity": int(row["popularity"]) if not pd.isna(row["popularity"]) else None,
-        "members": int(row["members"]) if not pd.isna(row["members"]) else None,
-        "favorites": int(row["favorites"]) if not pd.isna(row["favorites"]) else None,
-        "synopsis": safe_value(row["synopsis"]),
-        "background": safe_value(row["background"]),
-        "authors": safe_json_parse(row.get("authors")),
-        "serializations": safe_json_parse(row.get("serializations")),
-        "genres": safe_json_parse(row.get("genres")),
-        "explicit_genres": safe_json_parse(row.get("explicit_genres")),
-        "themes": safe_json_parse(row.get("themes")),
-        "demographics": safe_json_parse(row.get("demographics")),
-        "relations": safe_json_parse(row.get("relations")),
-        "external": safe_json_parse(row.get("external")),
-        "images": safe_json_parse(row.get("images"))
+        rec_response = await client.get(f"{JIKAN_BASE_URL}/manga/{manga_id}/recommendations")
+        rec_data = rec_response.json() if rec_response.status_code == 200 else {"data": []}
+
+    result = {
+        "manga": detail_data.get("data", {}),
+        "recommendations": rec_data.get("data", []),
     }
 
-@app.get("/manga/stats")
-def get_manga_stats():
-    """Get manga dataset statistics"""
-    df = manga_df.copy()
-    
-    total_manga = len(df)
-    with_scores = len(df[df['score'].notna()])
-    publishing = len(df[df['publishing'] == True])
-    finished = len(df[df['status'] == 'Finished'])
-    
-    # Top genres
-    genre_counts = {}
-    for genre_field in df['genres'].dropna():
-        genre_list = safe_json_parse(genre_field)
-        for genre in genre_list:
-            if isinstance(genre, dict) and genre.get('name'):
-                name = genre['name']
-                genre_counts[name] = genre_counts.get(name, 0) + 1
-    
-    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    
-    # Top authors
-    author_counts = {}
-    for author_field in df['authors'].dropna():
-        author_list = safe_json_parse(author_field)
-        for author in author_list:
-            if isinstance(author, dict) and author.get('name'):
-                name = author['name']
-                author_counts[name] = author_counts.get(name, 0) + 1
-    
-    top_authors = sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:10]
-    
-    return {
-        "total_manga": total_manga,
-        "with_scores": with_scores,
-        "publishing": publishing,
-        "finished": finished,
-        "score_percentage": round((with_scores / total_manga) * 100, 1),
-        "publishing_percentage": round((publishing / total_manga) * 100, 1),
-        "finished_percentage": round((finished / total_manga) * 100, 1),
-        "top_genres": [{"name": name, "count": count} for name, count in top_genres],
-        "top_authors": [{"name": name, "count": count} for name, count in top_authors],
-        "avg_chapters": round(df['chapters'].mean(), 1) if not df['chapters'].isna().all() else None,
-        "avg_volumes": round(df['volumes'].mean(), 1) if not df['volumes'].isna().all() else None,
-    }
+    return JSONResponse(content=result)
 
 @app.get("/anime/{anime_id}/image")
 async def get_anime_image(anime_id: int):
-    anime_row = anime_df[anime_df["id"] == anime_id]
-    if anime_row.empty:
-        raise HTTPException(status_code=404, detail="Anime not found")
-    
-    row = anime_row.iloc[0]
-    image_url = safe_value(row.get("image_url")) or safe_value(row.get("thumbnail_url"))
-    
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{JIKAN_BASE_URL}/anime/{anime_id}/pictures")
+
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Anime not found")
+
+    data = response.json()
+
+    if "data" not in data or not data["data"]:
+        raise HTTPException(status_code=404, detail="No images found for this anime")
+
+    first_img = data["data"][0]["jpg"]
+
     return JSONResponse(content={
-        "image_url": image_url,
-        "thumbnail_url": safe_value(row.get("thumbnail_url"))
+        "id": anime_id,
+        "image_url": first_img.get("image_url"),
+        "large_image_url": first_img.get("large_image_url"),
+        "small_image_url": first_img.get("small_image_url"),
     })
 
-@app.get("/manga/{manga_id}/image") 
+@app.get("/manga/{manga_id}/image")
 async def get_manga_image(manga_id: int):
-    manga_row = manga_df[manga_df["id"] == manga_id] 
-    if manga_row.empty:
-        raise HTTPException(status_code=404, detail="Manga not found")
-        
-    row = manga_row.iloc[0]
-    image_url = safe_value(row.get("image_url")) or safe_value(row.get("thumbnail_url"))
+    async with httpx.AsyncClient() as client:
+        response = await client.get(f"{JIKAN_BASE_URL}/manga/{manga_id}/full")
     
+    if response.status_code != 200:
+        raise HTTPException(status_code=response.status_code, detail="Manga not found")
+    
+    data = response.json().get("data", {})
+    
+    image_url = data.get("images", {}).get("jpg", {}).get("large_image_url")
+    thumbnail_url = data.get("images", {}).get("jpg", {}).get("image_url")
+
     return JSONResponse(content={
+        "id": manga_id,
         "image_url": image_url,
-        "thumbnail_url": safe_value(row.get("thumbnail_url"))
+        "thumbnail_url": thumbnail_url
     })
