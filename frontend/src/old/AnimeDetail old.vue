@@ -21,7 +21,96 @@
 
     <div v-else-if="anime" class="space-y-8">
       <!-- Hero Section with Cover + Main Info -->
-      <AnimeHero :anime="anime" />
+      <div class="relative bg-gradient-to-r from-gray-800 via-gray-900 to-black rounded-xl p-6">
+        <div class="flex flex-col lg:flex-row gap-8">
+          <div class="flex-shrink-0">
+            <img
+              :src="getImageUrl() || '/placeholder-anime.jpg'"
+              :alt="anime.title || 'Anime Cover'"
+              class="w-64 h-96 rounded-lg shadow-2xl object-cover mx-auto lg:mx-0"
+              @error="handleImageError"
+            />
+          </div>
+
+          <div class="flex-1 space-y-4">
+            <div>
+              <h1 class="text-4xl font-bold mb-2">{{ anime.title || 'Unknown Title' }}</h1>
+              <p
+                v-if="anime.title_english && anime.title_english !== anime.title"
+                class="text-gray-300 text-xl"
+              >
+                {{ anime.title_english }}
+              </p>
+              <p v-if="anime.title_japanese" class="text-gray-400 text-lg">
+                {{ anime.title_japanese }}
+              </p>
+              <p
+                v-if="anime.title_synonyms && anime.title_synonyms.length"
+                class="text-gray-500 text-sm"
+              >
+                <strong>Also known as:</strong>
+                {{ anime.title_synonyms.join(', ') }}
+              </p>
+            </div>
+
+            <!-- Key Stats Row -->
+            <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <StatCard
+                v-if="anime.score"
+                :value="`★ ${formatScore(anime.score)}`"
+                label="Score"
+                color="yellow"
+              />
+
+              <StatCard v-if="anime.rank" :value="`#${anime.rank}`" label="Rank" color="purple" />
+
+              <StatCard
+                v-if="anime.popularity"
+                :value="`#${anime.popularity}`"
+                label="Popularity"
+                color="green"
+              />
+
+              <StatCard
+                v-if="anime.members"
+                :value="formatNumber(anime.members)"
+                label="Members"
+                color="blue"
+              />
+            </div>
+
+            <!-- Basic Info Grid -->
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
+              <div v-if="anime.type" class="flex justify-between">
+                <span class="text-gray-400">Type:</span>
+                <span class="font-medium">{{ anime.type }}</span>
+              </div>
+              <div v-if="anime.episodes" class="flex justify-between">
+                <span class="text-gray-400">Episodes:</span>
+                <span class="font-medium">{{ anime.episodes }}</span>
+              </div>
+              <div v-if="anime.status" class="flex justify-between">
+                <span class="text-gray-400">Status:</span>
+                <span class="font-medium" :class="getStatusColor(anime.status)">{{
+                  anime.status
+                }}</span>
+              </div>
+              <div v-if="anime.duration" class="flex justify-between">
+                <span class="text-gray-400">Duration:</span>
+                <span class="font-medium">{{ anime.duration }}</span>
+              </div>
+              <div v-if="anime.rating" class="flex justify-between">
+                <span class="text-gray-400">Rating:</span>
+                <span class="font-medium">{{ anime.rating }}</span>
+              </div>
+              <div v-if="anime.source" class="flex justify-between">
+                <span class="text-gray-400">Source:</span>
+                <span class="font-medium">{{ anime.source }}</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- Synopsis Section -->
       <div class="bg-gray-800 rounded-xl p-6">
@@ -184,13 +273,98 @@
         </div>
       </div>
 
-      <RelatedInfo
-        v-if="anime"
-        :anime="anime"
-        :relationImages="relationImages"
-        @relationImageError="handleRelationImageError"
-        @entryClick="openAnimeDetail"
-      />
+      <!-- Relations Section -->
+      <div v-if="anime.relations && anime.relations.length" class="bg-gray-800 rounded-xl p-6">
+        <h3 class="text-xl font-semibold mb-6 text-pink-400 flex items-center">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
+            ></path>
+          </svg>
+          Related Anime
+        </h3>
+
+        <!-- Single horizontal scrollable container for all entries -->
+        <div class="flex gap-4 overflow-x-auto pb-4">
+          <div v-for="relation in anime.relations" :key="relation.relation" class="flex gap-4">
+            <div
+              v-for="entry in relation.entry"
+              :key="entry.mal_id"
+              class="flex-shrink-0 w-32 group cursor-pointer"
+            >
+              <a v-if="entry.url" :href="entry.url" target="_blank" class="block">
+                <div
+                  class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
+                >
+                  <!-- Image with fallback -->
+                  <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+                    <img
+                      :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
+                      :alt="entry.name"
+                      class="w-full h-full object-cover"
+                      @error="() => handleRelationImageError(entry)"
+                      :class="{ 'opacity-50': !relationImages[entry.mal_id] }"
+                    />
+                    <div class="absolute top-2 right-2">
+                      <span
+                        class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
+                      >
+                        {{ entry.type }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <!-- Content -->
+                  <div class="p-2">
+                    <h5
+                      class="text-xs font-medium text-white line-clamp-2 group-hover:text-pink-300 transition-colors leading-tight mb-1"
+                    >
+                      {{ entry.name }}
+                    </h5>
+                    <span class="text-xs text-pink-300 capitalize">{{
+                      getRelationForEntry(entry.mal_id)
+                    }}</span>
+                  </div>
+                </div>
+              </a>
+
+              <!-- Non-clickable version if no URL -->
+              <div v-else class="block">
+                <div class="bg-gray-900 rounded-lg overflow-hidden">
+                  <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+                    <img
+                      :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
+                      :alt="entry.name"
+                      class="w-full h-full object-cover"
+                      @error="() => handleRelationImageError(entry)"
+                      :class="{ 'opacity-50': !relationImages[entry.mal_id] }"
+                    />
+                    <div class="absolute top-2 right-2">
+                      <span
+                        class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
+                      >
+                        {{ entry.type }}
+                      </span>
+                    </div>
+                  </div>
+
+                  <div class="p-2">
+                    <h5 class="text-xs font-medium text-white line-clamp-2 leading-tight mb-1">
+                      {{ entry.name }}
+                    </h5>
+                    <span class="text-xs text-pink-300 capitalize">{{
+                      getRelationForEntry(entry.mal_id)
+                    }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
 
       <!-- AI-Powered Recommendations Section -->
       <div
@@ -408,6 +582,77 @@
         </div>
       </div>
 
+      <!-- Recommendations Section -->
+      <div
+        v-if="anime.recommendations && anime.recommendations.length"
+        class="bg-gray-800 rounded-xl p-6"
+      >
+        <h3 class="text-xl font-semibold mb-6 text-amber-400 flex items-center">
+          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path
+              stroke-linecap="round"
+              stroke-linejoin="round"
+              stroke-width="2"
+              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
+            ></path>
+          </svg>
+          Recommended By Users
+        </h3>
+
+        <!-- Horizontal scrollable container -->
+        <div class="overflow-x-auto overflow-y-hidden">
+          <div class="flex gap-4 pb-4 min-w-max">
+            <div
+              v-for="recommendation in anime.recommendations"
+              :key="recommendation.entry.mal_id"
+              class="flex-shrink-0 w-40 group cursor-pointer"
+              @click="openAnimeDetail(recommendation)"
+            >
+              <div
+                class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full"
+              >
+                <!-- Image -->
+                <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+                  <img
+                    :src="getRecommendationImageUrl(recommendation.entry)"
+                    :alt="recommendation.entry.title"
+                    class="w-full h-full object-cover"
+                    @error="(e) => handleRecommendationImageError(e, recommendation.entry)"
+                  />
+                  <div class="absolute top-2 right-2">
+                    <span class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded">
+                      ANIME
+                    </span>
+                  </div>
+                  <div class="absolute bottom-2 left-2">
+                    <span
+                      class="px-2 py-1 bg-amber-600 bg-opacity-90 text-white text-xs rounded flex items-center"
+                    >
+                      <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
+                        <path
+                          d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
+                        />
+                      </svg>
+                      {{ recommendation.votes }}
+                    </span>
+                  </div>
+                </div>
+
+                <!-- Content -->
+                <div class="p-3">
+                  <h5
+                    class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-1"
+                  >
+                    {{ recommendation.entry.title }}
+                  </h5>
+                  <span class="text-xs text-amber-300"> {{ recommendation.votes }} votes </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
       <!-- Opening & Ending Themes -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
         <div v-if="getOpeningThemes().length" class="bg-gray-800 rounded-xl p-6">
@@ -620,9 +865,12 @@
 import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
+import { useRouter } from 'vue-router'
+import StatCard from '@/components/common/StatCard.vue'
 import TagSection from '@/components/common/TagSection.vue'
 import RelatedInfo from '@/components/common/RelatedInfo.vue'
-import AnimeHero from '@/components/anime/AnimeHero.vue'
+
+const router = useRouter()
 
 const route = useRoute()
 const anime = ref(null)
@@ -638,7 +886,6 @@ const recommendationFilters = ref({
   showExplanations: true,
   minScore: '',
 })
-
 async function fetchAIRecommendations() {
   if (!anime.value?.mal_id) return
 
@@ -693,26 +940,37 @@ watch(
 )
 
 function openAnimeDetail(item) {
-  let id, type
-
-  if (item.entry) {
-    id = item.entry.mal_id
-    type = item.entry.type
+  let animeId
+  if (item.id) {
+    animeId = item.id
+  } else if (item.entry?.mal_id) {
+    animeId = item.entry.mal_id
+  } else if (item.mal_id) {
+    animeId = item.mal_id
   } else {
-    id = item.mal_id || item.id
-    type = item.type || 'anime'
-  }
-
-  if (!id) {
-    console.error('Unable to determine ID from:', item)
+    console.error('Unable to determine anime ID from:', item)
     return
   }
 
-  if (type.toLowerCase() === 'manga') {
-    window.location.href = `/manga/${id}`
-  } else {
-    window.location.href = `/anime/${id}`
+  window.location.href = `/anime/${animeId}`
+}
+const getImageUrl = () => {
+  if (!anime.value?.images) return null
+
+  if (anime.value.images.webp?.large_image_url) {
+    return anime.value.images.webp.large_image_url
   }
+  if (anime.value.images.webp?.image_url) {
+    return anime.value.images.webp.image_url
+  }
+  if (anime.value.images.jpg?.large_image_url) {
+    return anime.value.images.jpg.large_image_url
+  }
+  if (anime.value.images.jpg?.image_url) {
+    return anime.value.images.jpg.image_url
+  }
+
+  return null
 }
 
 const getAiredString = () => {
@@ -812,6 +1070,48 @@ const getStreamingPlatforms = () => {
   return anime.value.streaming
 }
 
+// Helper function to get relation type for a specific entry
+const getRelationForEntry = (malId) => {
+  if (!anime.value?.relations) return ''
+
+  for (const relation of anime.value.relations) {
+    const entry = relation.entry.find((e) => e.mal_id === malId)
+    if (entry) return relation.relation
+  }
+  return ''
+}
+
+// Helper function to get recommendation image URL
+const getRecommendationImageUrl = (entry) => {
+  if (!entry?.images) return getPlaceholderImage({ type: 'anime' })
+
+  // Try different image formats in order of preference
+  if (entry.images.webp?.large_image_url) {
+    return entry.images.webp.large_image_url
+  }
+  if (entry.images.webp?.image_url) {
+    return entry.images.webp.image_url
+  }
+  if (entry.images.jpg?.large_image_url) {
+    return entry.images.jpg.large_image_url
+  }
+  if (entry.images.jpg?.image_url) {
+    return entry.images.jpg.image_url
+  }
+
+  return getPlaceholderImage({ type: 'anime' })
+}
+
+// Handle image error for recommendation images
+const handleRecommendationImageError = (event, entry) => {
+  event.target.src = getPlaceholderImage({ type: 'anime' })
+}
+
+// Helper function to get placeholder image
+const getPlaceholderImage = (entry) => {
+  return `https://via.placeholder.com/200x280/374151/f3f4f6?text=${encodeURIComponent(entry.type)}`
+}
+
 // Handle image error for relation images
 const handleRelationImageError = (entry) => {
   // Remove the failed image from relationImages so placeholder is shown
@@ -862,6 +1162,11 @@ const loadRelationImages = async () => {
   }
 }
 
+const formatScore = (score) => {
+  if (!score) return 'N/A'
+  return parseFloat(score).toFixed(1)
+}
+
 const formatNumber = (num) => {
   if (!num) return 'N/A'
   return parseInt(num).toLocaleString()
@@ -878,6 +1183,18 @@ const formatDate = (dateStr) => {
   } catch {
     return dateStr
   }
+}
+
+const getStatusColor = (status) => {
+  const statusColors = {
+    'Finished Airing': 'text-green-400',
+    'Currently Airing': 'text-blue-400',
+    'Not yet aired': 'text-yellow-400',
+    Completed: 'text-green-400',
+    Ongoing: 'text-blue-400',
+    Upcoming: 'text-yellow-400',
+  }
+  return statusColors[status] || 'text-gray-400'
 }
 
 const handleImageError = (event) => {
