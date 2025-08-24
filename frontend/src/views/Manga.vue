@@ -161,14 +161,14 @@
                     getScoreBgColor(manga.score),
                   ]"
                 >
-                  <span>👍</span>
+                  <span>{{ getScoreIcon(manga.score) }}</span>
                   <span>{{ Math.round(manga.score * 10) }}%</span>
                 </div>
               </div>
 
               <!-- Authors -->
               <div v-if="manga.authors?.length" class="text-gray-300 text-sm">
-                By: {{ manga.authors.join(', ') }}
+                By: {{ formatAuthors(manga.authors) }}
               </div>
 
               <!-- Type + Volumes/Chapters -->
@@ -188,7 +188,16 @@
                 <span
                   v-for="genre in manga.genres.slice(0, 4)"
                   :key="genre"
-                  class="px-3 py-1 text-xs rounded-full border border-gray-600"
+                  :style="{
+                    backgroundColor: getMangaGenreColor(manga.mal_id),
+                    color: getMangaGenreTextColor(manga.mal_id),
+                  }"
+                  class="px-3 py-1 text-xs rounded-full font-medium border"
+                  :class="
+                    getMangaGenreTextColor(manga.mal_id) === '#000000'
+                      ? 'border-gray-400'
+                      : 'border-gray-600'
+                  "
                 >
                   {{ genre }}
                 </span>
@@ -250,6 +259,16 @@ const getScoreBgColor = (score) => {
   return 'bg-gray-700 text-white'
 }
 
+const getScoreIcon = (score) => {
+  if (score === null || score === undefined) return '❓'
+  const s = Math.round(score * 10)
+  if (s >= 81) return '🔥'
+  if (s >= 71) return '👍'
+  if (s >= 51) return '👌'
+  if (s >= 0) return '👎'
+  return '❓'
+}
+
 const getStatusBgColor = (status) => {
   if (!status) return 'bg-gray-700 text-white'
   const s = status.toLowerCase()
@@ -261,6 +280,77 @@ const getStatusBgColor = (status) => {
 
 const handleImageError = (event) => {
   event.target.src = 'https://via.placeholder.com/150x215/374151/9CA3AF?text=No+Image'
+}
+
+const formatAuthors = (authors) => {
+  if (!authors || authors.length === 0) return ''
+
+  const cleanAuthors = authors
+    .map((author) => {
+      if (typeof author === 'string') {
+        if (author.includes(',')) {
+          const parts = author.split(',').map((part) => part.trim())
+          if (parts.length === 2) {
+            return `${parts[1]} ${parts[0]}`
+          }
+        }
+        return author.trim()
+      }
+      return author
+    })
+    .filter((author) => author && author.length > 0)
+
+  if (cleanAuthors.length === 0) return ''
+  if (cleanAuthors.length === 1) return cleanAuthors[0]
+  if (cleanAuthors.length === 2) return `${cleanAuthors[0]} and ${cleanAuthors[1]}`
+
+  const lastAuthor = cleanAuthors[cleanAuthors.length - 1]
+  const otherAuthors = cleanAuthors.slice(0, -1)
+  return `${otherAuthors.join(', ')}, and ${lastAuthor}`
+}
+
+const mangaGenreColors = reactive({})
+const genreColorPalette = [
+  '#EF4444', // red-500
+  '#F97316', // orange-500
+  '#EAB308', // yellow-500
+  '#22C55E', // green-500
+  '#06B6D4', // cyan-500
+  '#3B82F6', // blue-500
+  '#8B5CF6', // violet-500
+  '#EC4899', // pink-500
+  '#F59E0B', // amber-500
+  '#10B981', // emerald-500
+  '#6366F1', // indigo-500
+  '#8B5A2B', // brown
+  '#84CC16', // lime-500
+  '#F472B6', // pink-400
+  '#A855F7', // purple-500
+  '#14B8A6', // teal-500
+  '#DC2626', // red-600
+  '#EA580C', // orange-600
+  '#16A34A', // green-600
+  '#2563EB', // blue-600
+]
+
+const getMangaGenreColor = (mangaId) => {
+  if (!mangaGenreColors[mangaId]) {
+    // Assign a random color to this manga (changes on refresh)
+    const randomIndex = Math.floor(Math.random() * genreColorPalette.length)
+    mangaGenreColors[mangaId] = genreColorPalette[randomIndex]
+  }
+  return mangaGenreColors[mangaId]
+}
+
+const getMangaGenreTextColor = (mangaId) => {
+  const bgColor = getMangaGenreColor(mangaId)
+  const r = parseInt(bgColor.slice(1, 3), 16)
+  const g = parseInt(bgColor.slice(3, 5), 16)
+  const b = parseInt(bgColor.slice(5, 7), 16)
+
+  const luminance = (0.299 * r + 0.587 * g + 0.114 * b) / 255
+
+  return luminance > 0.6 ? '#000000' : '#FFFFFF'
 }
 
 const filters = ref({

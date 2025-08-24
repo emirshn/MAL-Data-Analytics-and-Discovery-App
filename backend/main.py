@@ -1,5 +1,6 @@
 import json
 import math
+import numpy as np
 import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -341,6 +342,7 @@ def get_anime(
             "has_prev": offset > 0
         }
     }
+
 @app.get("/anime/filters")
 def get_anime_filters():
     """Get all available filter options"""
@@ -858,3 +860,363 @@ async def get_manga_image(manga_id: int):
         "image_url": image_url,
         "thumbnail_url": thumbnail_url
     })
+
+# Add these imports at the top of your existing file
+import pickle
+import gzip
+import os
+from typing import Optional
+
+recommender = None
+
+def load_recommender():
+    global recommender
+    if recommender is not None:
+        return recommender
+    
+    model_files = [
+        "anime_recommender_advanced.pkl.gz",
+        "anime_recommender_advanced.pkl", 
+        "dataset/anime_recommender_advanced.pkl.gz",
+        "dataset/anime_recommender_advanced.pkl"
+    ]
+    
+    for model_file in model_files:
+        if os.path.exists(model_file):
+            try:
+                if model_file.endswith('.gz'):
+                    with gzip.open(model_file, "rb") as f:
+                        model_data = pickle.load(f)
+                else:
+                    with open(model_file, "rb") as f:
+                        model_data = pickle.load(f)
+                
+                class SimpleRecommender:
+                    def __init__(self, model_data):
+                        self.df = model_data['df']
+                        self.features = model_data['features']
+                        self.model_info = model_data.get('model_info', {})
+                    
+                    def parse_list(self, x):
+                        """Parse JSON-like strings to extract names"""
+                        if pd.isna(x) or x == "":
+                            return []
+                        try:
+                            if isinstance(x, str) and x.startswith("["):
+                                parsed = ast.literal_eval(x)
+                                if isinstance(parsed, list):
+                                    return [d.get("name", "") for d in parsed if isinstance(d, dict) and "name" in d]
+                            elif isinstance(x, list):
+                                return x
+                            return []
+                        except:
+                            return []
+                    
+                    def explain_similarity(self, source_anime, target_anime):
+                        """Generate explanation for why anime are similar"""
+                        source_genres = set(self.parse_list(source_anime.get('genres', '')))
+                        target_genres = set(self.parse_list(target_anime.get('genres', '')))
+                        source_themes = set(self.parse_list(source_anime.get('themes', '')))
+                        target_themes = set(self.parse_list(target_anime.get('themes', '')))
+                        
+                        explanation_parts = []
+                        
+                        # Genre analysis
+                        common_genres = source_genres & target_genres
+                        if common_genres:
+                            if len(common_genres) >= 3:
+                                explanation_parts.append(f"Strong genre overlap: {', '.join(list(common_genres)[:3])}")
+                            elif len(common_genres) == 2:
+                                explanation_parts.append(f"Shared genres: {', '.join(common_genres)}")
+                            else:
+                                explanation_parts.append(f"Same genre: {list(common_genres)[0]}")
+                        
+                        # Theme analysis
+                        common_themes = source_themes & target_themes
+                        if common_themes:
+                            if len(common_themes) >= 2:
+                                explanation_parts.append(f"Similar themes: {', '.join(list(common_themes)[:2])}")
+                            else:
+                                explanation_parts.append(f"Shared theme: {list(common_themes)[0]}")
+                        
+                        # Format analysis
+                        if source_anime.get('type') == target_anime.get('type'):
+                            if source_anime.get('type') in ['TV', 'Movie']:
+                                explanation_parts.append(f"Both {source_anime.get('type')} format")
+                        
+                        # Score tier analysis
+                        source_score = source_anime.get('score', 0)
+                        target_score = target_anime.get('score', 0)
+                        if pd.notna(source_score) and pd.notna(target_score):
+                            if source_score >= 8.5 and target_score >= 8.5:
+                                explanation_parts.append("Both highly acclaimed")
+                            elif source_score >= 8.0 and target_score >= 8.0:
+                                explanation_parts.append("Both well-rated")
+                            elif abs(source_score - target_score) <= 0.5:
+                                explanation_parts.append("Similar rating levels")
+                        
+                        # Year proximity
+                        source_year = source_anime.get('year')
+                        target_year = target_anime.get('year')
+                        if pd.notna(source_year) and pd.notna(target_year):
+                            year_diff = abs(int(source_year) - int(target_year))
+                            if year_diff <= 2:
+                                explanation_parts.append(f"Same period ({int(target_year)})")
+                            elif year_diff <= 5:
+                                explanation_parts.append("Similar era")
+                        
+                        # Studio connection  
+                        source_studios = set(self.parse_list(source_anime.get('studios', '')))
+                        target_studios = set(self.parse_list(target_anime.get('studios', '')))
+                        common_studios = source_studios & target_studios
+                        if common_studios:
+                            explanation_parts.append(f"Same studio: {list(common_studios)[0]}")
+                        
+                        # Combine explanation
+                        if explanation_parts:
+                            return "; ".join(explanation_parts[:4])  # Limit to 4 reasons
+                        else:
+                            return "Similar content profile and style"
+                    
+                    def recommend(self, anime_id, top_k=10, min_score=None, include_sequels=True, explain=False):
+                        from sklearn.metrics.pairwise import cosine_similarity
+                        import numpy as np
+                        
+                        if anime_id not in self.df['mal_id'].values:
+                            return {"error": "Anime not found"}
+                        
+                        source_idx = self.df[self.df['mal_id'] == anime_id].index[0]
+                        source_anime = self.df.iloc[source_idx]
+                        
+                        similarities = cosine_similarity([self.features[source_idx]], self.features)[0]
+                        
+                        # Fix NaN, inf, -inf values
+                        similarities = np.nan_to_num(similarities, nan=0.0, posinf=1.0, neginf=0.0)
+                        
+                        # Create results dataframe
+                        results_df = self.df.copy()
+                        results_df['similarity'] = similarities
+                        
+                        # Remove source anime
+                        results_df = results_df[results_df['mal_id'] != anime_id]
+                        
+                        # Apply min_score filter
+                        if min_score is not None:
+                            results_df = results_df[
+                                (results_df['score'] >= min_score) | 
+                                results_df['score'].isna()
+                            ]
+                        
+                        # Remove sequels if requested
+                        if not include_sequels:
+                            source_title_words = source_anime['title'].lower().split()
+                            if len(source_title_words) > 0:
+                                main_title = source_title_words[0]
+                                if len(main_title) > 3:  # Only filter if title is meaningful
+                                    mask = ~results_df['title'].str.lower().str.contains(
+                                        main_title, na=False, regex=False
+                                    )
+                                    results_df = results_df[mask]
+                        
+                        # Ensure we have enough results
+                        if len(results_df) == 0:
+                            return {
+                                'source': {
+                                    'mal_id': int(source_anime['mal_id']),
+                                    'title': source_anime['title'],
+                                    'title_english': source_anime.get('title_english', ''),
+                                    'score': float(source_anime['score']) if pd.notna(source_anime['score']) else None
+                                },
+                                'recommendations': [],
+                                'filters_applied': {
+                                    'min_score': min_score,
+                                    'include_sequels': include_sequels,
+                                    'explain': explain
+                                }
+                            }
+                        
+                        # Get top recommendations
+                        sim_indices = results_df.nlargest(min(top_k, len(results_df)), 'similarity').index
+                        
+                        recommendations = []
+                        for idx in sim_indices:
+                            row = self.df.iloc[idx]
+                            similarity_val = results_df.loc[idx, 'similarity']
+                            
+                            # Ensure similarity is a valid float
+                            if not np.isfinite(similarity_val):
+                                similarity_val = 0.0
+                            
+                            rec_item = {
+                                'mal_id': int(row['mal_id']),
+                                'title': row['title'],
+                                'title_english': row.get('title_english', ''),
+                                'score': float(row['score']) if pd.notna(row['score']) else None,
+                                'similarity': float(similarity_val),
+                                'type': row.get('type', ''),
+                                'episodes': int(row['episodes']) if pd.notna(row['episodes']) else None,
+                                'year': int(row['year']) if pd.notna(row['year']) else None,
+                                'synopsis': row.get('synopsis', '')[:200] + "..." if row.get('synopsis') and len(row.get('synopsis', '')) > 200 else row.get('synopsis', '')
+                            }
+                            
+                            # Add explanation if requested
+                            if explain:
+                                rec_item['explanation'] = self.explain_similarity(source_anime, row)
+                            
+                            recommendations.append(rec_item)
+                        
+                        return {
+                            'source': {
+                                'mal_id': int(source_anime['mal_id']),
+                                'title': source_anime['title'],
+                                'title_english': source_anime.get('title_english', ''),
+                                'score': float(source_anime['score']) if pd.notna(source_anime['score']) else None
+                            },
+                            'recommendations': recommendations,
+                            'filters_applied': {
+                                'min_score': min_score,
+                                'include_sequels': include_sequels,
+                                'explain': explain
+                            }
+                        }
+                
+                recommender = SimpleRecommender(model_data)
+                print(f"✓ Recommender model loaded from {model_file}")
+                return recommender
+                
+            except Exception as e:
+                print(f"Failed to load {model_file}: {e}")
+                continue
+    
+    print("Warning: No recommender model found")
+    return None
+
+@app.get("/anime/{anime_id}/recommend")
+def get_anime_recommendations(
+    anime_id: int,
+    limit: int = 10,
+    min_score: float = None,
+    include_sequels: bool = True,
+    explain: bool = False
+):
+    """Get anime recommendations based on trained model with configurable options"""
+    
+    def safe_float(value):
+        """Convert value to safe float for JSON serialization"""
+        if value is None:
+            return None
+        try:
+            float_val = float(value)
+            if not np.isfinite(float_val):
+                return None
+            return float_val
+        except (ValueError, TypeError, OverflowError):
+            return None
+    
+    def safe_int(value):
+        """Convert value to safe int for JSON serialization"""
+        if value is None or pd.isna(value):
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError, OverflowError):
+            return None
+    
+    rec = load_recommender()
+    if rec is None:
+        raise HTTPException(status_code=503, detail="Recommendation model not available")
+    
+    result = rec.recommend(
+        anime_id, 
+        top_k=limit,
+        min_score=min_score,
+        include_sequels=include_sequels,
+        explain=explain
+    )
+    
+    if "error" in result:
+        if "not found" in result["error"].lower():
+            raise HTTPException(status_code=404, detail=f"Anime with ID {anime_id} not found")
+        else:
+            raise HTTPException(status_code=500, detail=result["error"])
+    
+    formatted_recommendations = []
+    for rec_item in result['recommendations']:
+        image_url = None
+        thumbnail_url = None
+        
+        anime_row = anime_df[anime_df['mal_id'] == rec_item['mal_id']]
+        if not anime_row.empty:
+            images_data = anime_row.iloc[0].get('images')
+            if pd.notna(images_data):
+                try:
+                    if isinstance(images_data, str):
+                        images_dict = json.loads(images_data)
+                    else:
+                        images_dict = images_data
+                    
+                    if isinstance(images_dict, dict):
+                        if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
+                            image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
+                            thumbnail_url = images_dict['webp'].get('small_image_url')
+                        elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
+                            image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
+                            thumbnail_url = images_dict['jpg'].get('small_image_url')
+                except:
+                    pass
+        
+        formatted_rec = {
+            "id": safe_int(rec_item['mal_id']),
+            "title": str(rec_item.get('title', '')),
+            "title_english": str(rec_item.get('title_english', '')),
+            "image_url": image_url,
+            "thumbnail_url": thumbnail_url,
+            "score": safe_float(rec_item.get('score')),
+            "similarity": safe_float(rec_item.get('similarity')),
+            "type": str(rec_item.get('type', '')),
+            "episodes": safe_int(rec_item.get('episodes')),
+            "year": safe_int(rec_item.get('year')),
+            "synopsis": str(rec_item.get('synopsis', ''))
+        }
+        
+        # Add explanation if available
+        if rec_item.get('explanation'):
+            formatted_rec['explanation'] = str(rec_item['explanation'])
+        
+        formatted_recommendations.append(formatted_rec)
+    
+    source_image_url = None
+    source_thumbnail_url = None
+    source_anime_row = anime_df[anime_df['mal_id'] == result['source']['mal_id']]
+    if not source_anime_row.empty:
+        images_data = source_anime_row.iloc[0].get('images')
+        if pd.notna(images_data):
+            try:
+                if isinstance(images_data, str):
+                    images_dict = json.loads(images_data)
+                else:
+                    images_dict = images_data
+                
+                if isinstance(images_dict, dict):
+                    if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
+                        source_image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
+                        source_thumbnail_url = images_dict['webp'].get('small_image_url')
+                    elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
+                        source_image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
+                        source_thumbnail_url = images_dict['jpg'].get('small_image_url')
+            except:
+                pass
+    
+    return {
+        "source": {
+            "id": safe_int(result['source']['mal_id']),
+            "title": str(result['source'].get('title', '')),
+            "title_english": str(result['source'].get('title_english', '')),
+            "image_url": source_image_url,
+            "thumbnail_url": source_thumbnail_url,
+            "score": safe_float(result['source'].get('score'))
+        },
+        "recommendations": formatted_recommendations,
+        "count": len(formatted_recommendations),
+        "filters_applied": result.get('filters_applied', {})
+    }

@@ -186,7 +186,7 @@
                     getScoreBgColor(anime.score),
                   ]"
                 >
-                  <span>👍</span>
+                  <span>{{ getScoreIcon(anime.score) }}</span>
                   <span>{{ Math.round(anime.score * 10) }}%</span>
                 </div>
               </div>
@@ -295,7 +295,15 @@ const getStatusBgColor = (status) => {
   if (s.includes('not yet aired')) return 'bg-orange-600 text-white'
   return 'bg-gray-700 text-white'
 }
-
+const getScoreIcon = (score) => {
+  if (score === null || score === undefined) return '❓'
+  const s = Math.round(score * 10)
+  if (s >= 81) return '🔥'
+  if (s >= 71) return '👍'
+  if (s >= 51) return '👌'
+  if (s >= 0) return '👎'
+  return '❓'
+}
 const capitalize = (str) => {
   if (!str) return ''
   return str.charAt(0).toUpperCase() + str.slice(1)
