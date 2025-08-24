@@ -55,35 +55,28 @@
 
             <!-- Key Stats Row -->
             <div class="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div
+              <StatCard
                 v-if="anime.score"
-                class="bg-yellow-600 bg-opacity-20 p-3 rounded-lg text-center"
-              >
-                <div class="text-yellow-400 text-2xl font-bold">
-                  ★ {{ formatScore(anime.score) }}
-                </div>
-                <div class="text-xs text-gray-400">Score</div>
-              </div>
-              <div v-if="anime.rank" class="bg-purple-600 bg-opacity-20 p-3 rounded-lg text-center">
-                <div class="text-purple-400 text-2xl font-bold">#{{ anime.rank }}</div>
-                <div class="text-xs text-gray-400">Rank</div>
-              </div>
-              <div
+                :value="`★ ${formatScore(anime.score)}`"
+                label="Score"
+                color="yellow"
+              />
+
+              <StatCard v-if="anime.rank" :value="`#${anime.rank}`" label="Rank" color="purple" />
+
+              <StatCard
                 v-if="anime.popularity"
-                class="bg-green-600 bg-opacity-20 p-3 rounded-lg text-center"
-              >
-                <div class="text-green-400 text-2xl font-bold">#{{ anime.popularity }}</div>
-                <div class="text-xs text-gray-400">Popularity</div>
-              </div>
-              <div
+                :value="`#${anime.popularity}`"
+                label="Popularity"
+                color="green"
+              />
+
+              <StatCard
                 v-if="anime.members"
-                class="bg-blue-600 bg-opacity-20 p-3 rounded-lg text-center"
-              >
-                <div class="text-blue-400 text-2xl font-bold">
-                  {{ formatNumber(anime.members) }}
-                </div>
-                <div class="text-xs text-gray-400">Members</div>
-              </div>
+                :value="formatNumber(anime.members)"
+                label="Members"
+                color="blue"
+              />
             </div>
 
             <!-- Basic Info Grid -->
@@ -220,51 +213,24 @@
 
       <!-- Categories Section -->
       <div class="space-y-6">
-        <!-- Genres and Themes Row -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Genres -->
-          <div v-if="getGenresList().length" class="bg-gray-800 rounded-xl p-6">
-            <h3 class="text-xl font-semibold mb-4 text-blue-400">Genres</h3>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="genre in getGenresList()"
-                :key="genre"
-                class="px-3 py-1 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors cursor-pointer"
-              >
-                {{ genre }}
-              </span>
-            </div>
-          </div>
+          <TagSection
+            v-if="getGenresList().length"
+            label="Genres"
+            :items="getGenresList()"
+            color="blue"
+          />
 
-          <!-- Themes -->
-          <div v-if="getThemesList().length" class="bg-gray-800 rounded-xl p-6">
-            <h3 class="text-xl font-semibold mb-4 text-purple-400">Themes</h3>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="theme in getThemesList()"
-                :key="theme"
-                class="px-3 py-1 rounded-full bg-purple-600 text-white text-sm hover:bg-purple-700 transition-colors cursor-pointer"
-              >
-                {{ theme }}
-              </span>
-            </div>
-          </div>
+          <TagSection
+            v-if="getThemesList().length"
+            label="Themes"
+            :items="getThemesList()"
+            color="purple"
+          />
         </div>
 
-        <!-- Demographics Row -->
         <div v-if="getDemographicsList().length" class="grid grid-cols-1 gap-6">
-          <div class="bg-gray-800 rounded-xl p-6">
-            <h3 class="text-xl font-semibold mb-4 text-green-400">Demographics</h3>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="demo in getDemographicsList()"
-                :key="demo"
-                class="px-3 py-1 rounded-full bg-green-600 text-white text-sm hover:bg-green-700 transition-colors cursor-pointer"
-              >
-                {{ demo }}
-              </span>
-            </div>
-          </div>
+          <TagSection label="Demographics" :items="getDemographicsList()" color="green" />
         </div>
       </div>
 
@@ -900,6 +866,8 @@ import { ref, onMounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import { useRouter } from 'vue-router'
+import StatCard from '@/components/common/StatCard.vue'
+import TagSection from '@/components/common/TagSection.vue'
 
 const router = useRouter()
 
