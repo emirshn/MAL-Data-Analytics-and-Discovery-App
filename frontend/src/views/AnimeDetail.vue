@@ -192,221 +192,17 @@
         @entryClick="openAnimeDetail"
       />
 
-      <!-- AI-Powered Recommendations Section -->
-      <div
-        v-if="aiRecommendations !== null && aiRecommendations !== undefined"
-        class="bg-gray-800 rounded-xl p-6"
-      >
-        <div class="flex justify-between items-center mb-6">
-          <h3 class="text-xl font-semibold text-amber-400 flex items-center">
-            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-              ></path>
-            </svg>
-            AI-Powered Recommendations
-          </h3>
-
-          <!-- Filter Controls -->
-          <div class="flex items-center gap-3 text-sm">
-            <label class="flex items-center text-gray-300">
-              <input
-                v-model="recommendationFilters.includeSequels"
-                type="checkbox"
-                class="mr-2 rounded bg-gray-700 border-gray-600 text-amber-500 focus:ring-amber-500"
-                @change="fetchAIRecommendations"
-              />
-              Include Sequels
-            </label>
-            <label class="flex items-center text-gray-300">
-              <input
-                v-model="recommendationFilters.showExplanations"
-                type="checkbox"
-                class="mr-2 rounded bg-gray-700 border-gray-600 text-amber-500 focus:ring-amber-500"
-              />
-              Show Explanations
-            </label>
-            <select
-              v-model="recommendationFilters.minScore"
-              class="bg-gray-700 border-gray-600 text-white rounded px-2 py-1 text-sm"
-              @change="fetchAIRecommendations"
-            >
-              <option value="">Any Score</option>
-              <option value="6.0">6.0+ Rating</option>
-              <option value="7.0">7.0+ Rating</option>
-              <option value="8.0">8.0+ Rating</option>
-              <option value="8.5">8.5+ Rating</option>
-            </select>
-          </div>
-        </div>
-
-        <!-- Loading State -->
-        <div v-if="loadingRecommendations" class="text-center py-8">
-          <div
-            class="inline-block animate-spin rounded-full h-8 w-8 border-b-2 border-amber-400"
-          ></div>
-          <p class="mt-2 text-gray-400">Finding similar anime...</p>
-        </div>
-
-        <!-- Recommendations Grid - Only show if we have recommendations -->
-        <div
-          v-else-if="aiRecommendations && aiRecommendations.length > 0"
-          class="overflow-x-auto overflow-y-hidden"
-        >
-          <div class="flex gap-4 pb-4 min-w-max">
-            <div
-              v-for="recommendation in aiRecommendations"
-              :key="recommendation.id"
-              class="flex-shrink-0 w-48 group cursor-pointer"
-              @click="openAnimeDetail(recommendation)"
-            >
-              <div
-                class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-all duration-300 h-full hover:shadow-lg hover:shadow-amber-500/20"
-              >
-                <!-- Image -->
-                <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
-                  <img
-                    :src="
-                      recommendation.image_url ||
-                      recommendation.thumbnail_url ||
-                      '/api/placeholder/160/213'
-                    "
-                    :alt="recommendation.title"
-                    class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
-                    @error="(e) => handleImageError(e, recommendation)"
-                  />
-
-                  <!-- Type Badge -->
-                  <div class="absolute top-2 right-2">
-                    <span class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded">
-                      {{ recommendation.type || 'ANIME' }}
-                    </span>
-                  </div>
-
-                  <!-- Score and Similarity -->
-                  <div class="absolute bottom-2 left-2 flex flex-col gap-1">
-                    <span
-                      v-if="recommendation.score"
-                      class="px-2 py-1 bg-amber-600 bg-opacity-90 text-white text-xs rounded flex items-center"
-                    >
-                      <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
-                        />
-                      </svg>
-                      {{ recommendation.score.toFixed(1) }}
-                    </span>
-
-                    <span class="px-2 py-1 bg-blue-600 bg-opacity-90 text-white text-xs rounded">
-                      {{ Math.round(recommendation.similarity * 100) }}% match
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Content -->
-                <div class="p-3">
-                  <h5
-                    class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-2"
-                  >
-                    {{ recommendation.title }}
-                  </h5>
-
-                  <!-- English Title -->
-                  <p
-                    v-if="
-                      recommendation.title_english &&
-                      recommendation.title_english !== recommendation.title
-                    "
-                    class="text-xs text-gray-400 mb-2 line-clamp-1"
-                  >
-                    {{ recommendation.title_english }}
-                  </p>
-
-                  <!-- Meta Info -->
-                  <div class="flex items-center justify-between text-xs text-gray-400 mb-2">
-                    <span v-if="recommendation.year">{{ recommendation.year }}</span>
-                    <span v-if="recommendation.episodes">{{ recommendation.episodes }} eps</span>
-                  </div>
-
-                  <!-- Explanation (if enabled) -->
-                  <div
-                    v-if="recommendationFilters.showExplanations && recommendation.explanation"
-                    class="bg-gray-800 rounded p-2 mt-2"
-                  >
-                    <p class="text-xs text-amber-200 leading-relaxed">
-                      {{ recommendation.explanation }}
-                    </p>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- No Results Message - Only show when not loading and no recommendations -->
-        <div
-          v-else-if="!loadingRecommendations && aiRecommendations.length === 0"
-          class="text-center py-8 text-gray-400"
-        >
-          <svg
-            class="w-12 h-12 mx-auto mb-4 opacity-50"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.47-.881-6.08-2.33"
-            ></path>
-          </svg>
-          <p>No recommendations found with current filters</p>
-          <button
-            @click="resetRecommendationFilters"
-            class="mt-2 text-amber-400 hover:text-amber-300 text-sm underline"
-          >
-            Reset Filters
-          </button>
-        </div>
-      </div>
-
-      <!-- Show this section when aiRecommendations is null/undefined or empty -->
-      <div v-else-if="!loadingRecommendations" class="bg-gray-800 rounded-xl p-6">
-        <div class="flex justify-between items-center mb-6">
-          <h3 class="text-xl font-semibold text-amber-400 flex items-center">
-            <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                stroke-width="2"
-                d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"
-              ></path>
-            </svg>
-            AI-Powered Recommendations
-          </h3>
-        </div>
-
-        <div class="text-center py-8 text-gray-400">
-          <svg
-            class="w-12 h-12 mx-auto mb-4 opacity-50"
-            fill="none"
-            stroke="currentColor"
-            viewBox="0 0 24 24"
-          >
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M9.172 16.172a4 4 0 015.656 0M9 12h6m-6-4h6m2 5.291A7.962 7.962 0 0112 15c-2.34 0-4.47-.881-6.08-2.33"
-            ></path>
-          </svg>
-          <p>No recommendations available</p>
-        </div>
-      </div>
+      <AiRecommendation
+        v-if="anime"
+        :recommendations="aiRecommendations"
+        :loading="loadingRecommendations"
+        :filters="recommendationFilters"
+        content-type="anime"
+        @filters-changed="onFiltersChanged"
+        @item-click="openAnimeDetail"
+        @image-error="handleRecommendationImageError"
+        @reset-filters="resetRecommendationFilters"
+      />
 
       <!-- Opening & Ending Themes -->
       <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -617,12 +413,13 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch } from 'vue'
+import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
 import TagSection from '@/components/common/TagSection.vue'
 import RelatedInfo from '@/components/common/RelatedInfo.vue'
 import AnimeHero from '@/components/anime/AnimeHero.vue'
+import AiRecommendation from '@/components/common/AiRecommendation.vue'
 
 const route = useRoute()
 const anime = ref(null)
@@ -638,6 +435,75 @@ const recommendationFilters = ref({
   showExplanations: true,
   minScore: '',
 })
+
+// Concurrency control for relation images
+const MAX_CONCURRENT = 4
+const queue = []
+let active = 0
+let cancelled = false
+
+function enqueueRelationEntry(entry) {
+  if (relationImages.value[entry.mal_id]) return
+  queue.push(entry)
+  runNext()
+}
+
+function startRelationImageFetch() {
+  if (!anime.value?.relations) return
+  for (const relation of anime.value.relations) {
+    for (const entry of relation.entry) {
+      enqueueRelationEntry(entry)
+    }
+  }
+}
+
+async function runNext() {
+  if (cancelled || active >= MAX_CONCURRENT) return
+  const entry = queue.shift()
+  if (!entry) return
+
+  active++
+  try {
+    await loadRelationImage(entry)
+  } finally {
+    active--
+    if (queue.length) runNext()
+  }
+}
+
+const onFiltersChanged = (filterUpdate) => {
+  console.log('Filters changed:', filterUpdate)
+
+  Object.assign(recommendationFilters.value, filterUpdate)
+
+  fetchAIRecommendations()
+}
+
+const handleRecommendationImageError = (event, recommendation) => {
+  console.log('Recommendation image error:', recommendation)
+  event.target.src = '/api/placeholder/160/213'
+}
+
+const resetRecommendationFilters = () => {
+  console.log('Resetting filters')
+  recommendationFilters.value = {
+    includeSequels: false,
+    showExplanations: true,
+    minScore: '',
+  }
+  fetchAIRecommendations()
+}
+
+watch(
+  () => anime.value?.mal_id,
+  (newId) => {
+    console.log('Anime mal_id changed:', newId)
+    if (newId) {
+      fetchAIRecommendations()
+    }
+  },
+  { immediate: true },
+)
 
 async function fetchAIRecommendations() {
   if (!anime.value?.mal_id) return
@@ -672,25 +538,6 @@ async function fetchAIRecommendations() {
     loadingRecommendations.value = false
   }
 }
-
-function resetRecommendationFilters() {
-  recommendationFilters.value = {
-    includeSequels: false,
-    showExplanations: true,
-    minScore: '',
-  }
-  fetchAIRecommendations()
-}
-
-watch(
-  () => anime.value?.mal_id,
-  (newId) => {
-    if (newId) {
-      fetchAIRecommendations()
-    }
-  },
-  { immediate: true },
-)
 
 function openAnimeDetail(item) {
   let id, type
@@ -827,38 +674,26 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms))
 const loadRelationImage = async (entry) => {
   try {
     const baseUrl = 'http://127.0.0.1:8000'
-    let endpoint = ''
+    const endpoint =
+      entry.type === 'anime'
+        ? `${baseUrl}/anime/${entry.mal_id}/image`
+        : entry.type === 'manga'
+          ? `${baseUrl}/manga/${entry.mal_id}/image`
+          : null
 
-    if (entry.type === 'anime') {
-      endpoint = `${baseUrl}/anime/${entry.mal_id}/image`
-    } else if (entry.type === 'manga') {
-      endpoint = `${baseUrl}/manga/${entry.mal_id}/image`
-    } else {
-      return
-    }
+    if (!endpoint) return
 
     const response = await axios.get(endpoint)
-    if (response.data && response.data.image_url) {
+    if (response.data?.image_url && !cancelled) {
       relationImages.value[entry.mal_id] = response.data.image_url
     }
   } catch (error) {
     if (error.response?.status === 429) {
-      console.warn(`Rate limited for ${entry.type} ${entry.mal_id}, retrying...`)
+      console.warn(`429 for ${entry.type} ${entry.mal_id}, retrying...`)
       await sleep(1200)
       return loadRelationImage(entry)
     }
-    console.log(`Failed to load image for ${entry.type} ${entry.mal_id}:`, error)
-  }
-}
-
-const loadRelationImages = async () => {
-  if (!anime.value?.relations) return
-
-  for (const relation of anime.value.relations) {
-    for (const entry of relation.entry) {
-      await loadRelationImage(entry)
-      await sleep(400)
-    }
+    console.log(`Failed image for ${entry.type} ${entry.mal_id}:`, error)
   }
 }
 
@@ -878,10 +713,6 @@ const formatDate = (dateStr) => {
   } catch {
     return dateStr
   }
-}
-
-const handleImageError = (event) => {
-  event.target.src = '/placeholder-anime.jpg'
 }
 
 const getTrailerUrl = (trailer) => {
@@ -924,7 +755,7 @@ const loadAnime = async () => {
 
       anime.value = animeData
 
-      await loadRelationImages()
+      nextTick(() => startRelationImageFetch())
     }
   } catch (err) {
     console.error('Error fetching anime detail:', err)
@@ -947,6 +778,10 @@ const retryLoad = () => {
 
 onMounted(() => {
   loadAnime()
+})
+onBeforeUnmount(() => {
+  cancelled = true
+  queue.length = 0
 })
 </script>
 
