@@ -203,51 +203,24 @@
 
       <!-- Categories Section -->
       <div class="space-y-6">
-        <!-- Genres and Themes Row -->
         <div class="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <!-- Genres -->
-          <div v-if="getGenresList().length" class="bg-gray-800 rounded-xl p-6">
-            <h3 class="text-xl font-semibold mb-4 text-blue-400">Genres</h3>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="genre in getGenresList()"
-                :key="genre"
-                class="px-3 py-1 rounded-full bg-blue-600 text-white text-sm hover:bg-blue-700 transition-colors cursor-pointer"
-              >
-                {{ genre }}
-              </span>
-            </div>
-          </div>
+          <TagSection
+            v-if="getGenresList().length"
+            label="Genres"
+            :items="getGenresList()"
+            color="blue"
+          />
 
-          <!-- Themes -->
-          <div v-if="getThemesList().length" class="bg-gray-800 rounded-xl p-6">
-            <h3 class="text-xl font-semibold mb-4 text-purple-400">Themes</h3>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="theme in getThemesList()"
-                :key="theme"
-                class="px-3 py-1 rounded-full bg-purple-600 text-white text-sm hover:bg-purple-700 transition-colors cursor-pointer"
-              >
-                {{ theme }}
-              </span>
-            </div>
-          </div>
+          <TagSection
+            v-if="getThemesList().length"
+            label="Themes"
+            :items="getThemesList()"
+            color="purple"
+          />
         </div>
 
-        <!-- Demographics Row -->
         <div v-if="getDemographicsList().length" class="grid grid-cols-1 gap-6">
-          <div class="bg-gray-800 rounded-xl p-6">
-            <h3 class="text-xl font-semibold mb-4 text-green-400">Demographics</h3>
-            <div class="flex flex-wrap gap-2">
-              <span
-                v-for="demo in getDemographicsList()"
-                :key="demo"
-                class="px-3 py-1 rounded-full bg-green-600 text-white text-sm hover:bg-green-700 transition-colors cursor-pointer"
-              >
-                {{ demo }}
-              </span>
-            </div>
-          </div>
+          <TagSection label="Demographics" :items="getDemographicsList()" color="green" />
         </div>
       </div>
 
@@ -291,168 +264,13 @@
       </div>
 
       <!-- Relations Section -->
-      <div v-if="manga.relations && manga.relations.length" class="bg-gray-800 rounded-xl p-6">
-        <h3 class="text-xl font-semibold mb-6 text-pink-400 flex items-center">
-          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M13.828 10.172a4 4 0 00-5.656 0l-4 4a4 4 0 105.656 5.656l1.102-1.101m-.758-4.899a4 4 0 005.656 0l4-4a4 4 0 00-5.656-5.656l-1.1 1.1"
-            ></path>
-          </svg>
-          Related Media
-        </h3>
-
-        <!-- Single horizontal scrollable container for all entries -->
-        <div class="flex gap-4 overflow-x-auto pb-4">
-          <div v-for="relation in manga.relations" :key="relation.relation" class="flex gap-4">
-            <div
-              v-for="entry in relation.entry"
-              :key="entry.mal_id"
-              class="flex-shrink-0 w-32 group cursor-pointer"
-            >
-              <a v-if="entry.url" :href="entry.url" target="_blank" class="block">
-                <div
-                  class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors"
-                >
-                  <!-- Image with fallback -->
-                  <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
-                    <img
-                      :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
-                      :alt="entry.name"
-                      class="w-full h-full object-cover"
-                      @error="() => handleRelationImageError(entry)"
-                      :class="{ 'opacity-50': !relationImages[entry.mal_id] }"
-                    />
-                    <div class="absolute top-2 right-2">
-                      <span
-                        class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
-                      >
-                        {{ entry.type }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <!-- Content -->
-                  <div class="p-2">
-                    <h5
-                      class="text-xs font-medium text-white line-clamp-2 group-hover:text-pink-300 transition-colors leading-tight mb-1"
-                    >
-                      {{ entry.name }}
-                    </h5>
-                    <span class="text-xs text-pink-300 capitalize">{{
-                      getRelationForEntry(entry.mal_id)
-                    }}</span>
-                  </div>
-                </div>
-              </a>
-
-              <!-- Non-clickable version if no URL -->
-              <div v-else class="block">
-                <div class="bg-gray-900 rounded-lg overflow-hidden">
-                  <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
-                    <img
-                      :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
-                      :alt="entry.name"
-                      class="w-full h-full object-cover"
-                      @error="() => handleRelationImageError(entry)"
-                      :class="{ 'opacity-50': !relationImages[entry.mal_id] }"
-                    />
-                    <div class="absolute top-2 right-2">
-                      <span
-                        class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
-                      >
-                        {{ entry.type }}
-                      </span>
-                    </div>
-                  </div>
-
-                  <div class="p-2">
-                    <h5 class="text-xs font-medium text-white line-clamp-2 leading-tight mb-1">
-                      {{ entry.name }}
-                    </h5>
-                    <span class="text-xs text-pink-300 capitalize">{{
-                      getRelationForEntry(entry.mal_id)
-                    }}</span>
-                  </div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <!-- Recommendations Section -->
-      <div
-        v-if="manga.recommendations && manga.recommendations.length"
-        class="bg-gray-800 rounded-xl p-6"
-      >
-        <h3 class="text-xl font-semibold mb-6 text-amber-400 flex items-center">
-          <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-            <path
-              stroke-linecap="round"
-              stroke-linejoin="round"
-              stroke-width="2"
-              d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"
-            ></path>
-          </svg>
-          Recommended By Users
-        </h3>
-
-        <!-- Horizontal scrollable container -->
-        <div class="overflow-x-auto overflow-y-hidden">
-          <div class="flex gap-4 pb-4 min-w-max">
-            <div
-              v-for="recommendation in manga.recommendations"
-              :key="recommendation.entry.mal_id"
-              class="flex-shrink-0 w-40 group cursor-pointer"
-              @click="openMangaDetail(recommendation)"
-            >
-              <div
-                class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full"
-              >
-                <!-- Image -->
-                <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
-                  <img
-                    :src="getRecommendationImageUrl(recommendation.entry)"
-                    :alt="recommendation.entry.title"
-                    class="w-full h-full object-cover"
-                    @error="(e) => handleRecommendationImageError(e, recommendation.entry)"
-                  />
-                  <div class="absolute top-2 right-2">
-                    <span class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded">
-                      MANGA
-                    </span>
-                  </div>
-                  <div class="absolute bottom-2 left-2">
-                    <span
-                      class="px-2 py-1 bg-amber-600 bg-opacity-90 text-white text-xs rounded flex items-center"
-                    >
-                      <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                        <path
-                          d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
-                        />
-                      </svg>
-                      {{ recommendation.votes }}
-                    </span>
-                  </div>
-                </div>
-
-                <!-- Content -->
-                <div class="p-3">
-                  <h5
-                    class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-1"
-                  >
-                    {{ recommendation.entry.title }}
-                  </h5>
-                  <span class="text-xs text-amber-300"> {{ recommendation.votes }} votes </span>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
+      <RelatedInfo
+        v-if="manga"
+        :anime="manga"
+        :relationImages="relationImages"
+        @relationImageError="handleRelationImageError"
+        @entryClick="openMangaDetail"
+      />
 
       <!-- External Links -->
       <div class="bg-gray-800 rounded-xl p-6">
@@ -548,12 +366,12 @@
 </template>
 
 <script setup>
-import { ref, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import axios from 'axios'
-import { useRouter } from 'vue-router'
-
-const router = useRouter()
+import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
+import TagSection from '@/components/common/TagSection.vue'
+import RelatedInfo from '@/components/common/RelatedInfo.vue'
+import AiRecommendation from '@/components/common/AiRecommendation.vue'
 
 const route = useRoute()
 const manga = ref(null)
@@ -562,8 +380,27 @@ const error = ref(null)
 const showDebug = ref(false)
 const relationImages = ref({})
 
-const openMangaDetail = (manga) => {
-  window.location.href = `/manga/${manga.entry.mal_id}`
+function openMangaDetail(item) {
+  let id, type
+
+  if (item.entry) {
+    id = item.entry.mal_id
+    type = item.entry.type
+  } else {
+    id = item.mal_id || item.id
+    type = item.type || 'anime'
+  }
+
+  if (!id) {
+    console.error('Unable to determine ID from:', item)
+    return
+  }
+
+  if (type.toLowerCase() === 'manga') {
+    window.location.href = `/manga/${id}`
+  } else {
+    window.location.href = `/anime/${id}`
+  }
 }
 
 const getImageUrl = () => {
@@ -682,7 +519,6 @@ const getPlaceholderImage = (entry) => {
 
 // Handle image error for relation images
 const handleRelationImageError = (entry) => {
-  // Remove the failed image from relationImages so placeholder is shown
   if (relationImages.value[entry.mal_id]) {
     delete relationImages.value[entry.mal_id]
   }
@@ -771,6 +607,41 @@ const handleImageError = (event) => {
   event.target.src = '/placeholder-manga.jpg'
 }
 
+// Concurrency control for relation images
+const MAX_CONCURRENT = 4
+const queue = []
+let active = 0
+let cancelled = false
+
+function enqueueRelationEntry(entry) {
+  if (relationImages.value[entry.mal_id]) return
+  queue.push(entry)
+  runNext()
+}
+
+function startRelationImageFetch() {
+  if (!manga.value?.relations) return
+  for (const relation of manga.value.relations) {
+    for (const entry of relation.entry) {
+      enqueueRelationEntry(entry)
+    }
+  }
+}
+
+async function runNext() {
+  if (cancelled || active >= MAX_CONCURRENT) return
+  const entry = queue.shift()
+  if (!entry) return
+
+  active++
+  try {
+    await loadRelationImage(entry)
+  } finally {
+    active--
+    if (queue.length) runNext()
+  }
+}
+
 const loadManga = async () => {
   loading.value = true
   error.value = null
@@ -813,7 +684,7 @@ const loadManga = async () => {
 
       manga.value = mangaData
 
-      await loadRelationImages()
+      nextTick(() => startRelationImageFetch())
     }
   } catch (err) {
     console.error('Error fetching manga detail:', err)
@@ -836,6 +707,10 @@ const retryLoad = () => {
 
 onMounted(() => {
   loadManga()
+})
+onBeforeUnmount(() => {
+  cancelled = true
+  queue.length = 0
 })
 </script>
 

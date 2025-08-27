@@ -661,7 +661,6 @@ const getStreamingPlatforms = () => {
 
 // Handle image error for relation images
 const handleRelationImageError = (entry) => {
-  // Remove the failed image from relationImages so placeholder is shown
   if (relationImages.value[entry.mal_id]) {
     delete relationImages.value[entry.mal_id]
   }
