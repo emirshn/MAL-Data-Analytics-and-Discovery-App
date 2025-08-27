@@ -33,6 +33,7 @@
 
     <!-- Loading State -->
     <div v-if="loading" class="loading-container">
+      <div class="loading-spinner"></div>
       <div>Clustering relations...</div>
       <div class="loading-subtitle">
         Found {{ totalClusters }} clusters from {{ totalNodes }} nodes
@@ -49,6 +50,7 @@
     <div v-else class="graph-wrapper">
       <!-- Main SVG Container -->
       <div class="canvas-container">
+        <div class="starfield-background"></div>
         <svg
           ref="svgRef"
           class="graph-svg"
@@ -75,8 +77,15 @@
         <div>Visible: {{ visibleElementsCount }} elements</div>
         <div>Total Clusters: {{ totalClusters }}</div>
         <div class="legend">
-          <div>🟦 Series Clusters &nbsp; 🟢 Mega Clusters</div>
-          <div>🔵 Anime &nbsp; 🟣 Manga &nbsp; ⚫ Standalone</div>
+          <div>
+            <span class="legend-icon series-cluster"></span> Series Clusters &nbsp;
+            <span class="legend-icon mega-cluster"></span> Mega Clusters
+          </div>
+          <div>
+            <span class="legend-icon anime-node"></span> Anime &nbsp;
+            <span class="legend-icon manga-node"></span> Manga &nbsp;
+            <span class="legend-icon other-node"></span> Standalone
+          </div>
         </div>
         <div class="instructions">
           <div>Wheel: zoom, Drag: pan</div>
@@ -218,7 +227,7 @@ function createClusterWorker() {
   const workerCode = `
     onmessage = (e) => {
       const { nodes, links, standaloneGroupSize, megaThreshold, megaSize } = e.data
-        
+
       // Build adjacency list
       const adjacency = new Map()
       nodes.forEach(n => adjacency.set(n.id, new Set()))
@@ -243,7 +252,7 @@ function createClusterWorker() {
       // Helper function to extract clean series name
       function extractSeriesName(title) {
         if (!title) return null
-        
+
         // Remove common patterns that indicate sequels/seasons/parts
         let cleanTitle = title
           .replace(/\\s*(Season|Series|Part|Vol\\.?|Volume|Chapter|Episode|OVA|ONA|Movie|Film)\\s*\\d+.*$/i, '')
@@ -253,10 +262,10 @@ function createClusterWorker() {
           .replace(/\\s*\\(.*\\).*$/, '') // Remove parenthetical content
           .replace(/\\s*\\[.*\\].*$/, '') // Remove bracketed content
           .trim()
-        
+
         // If we removed everything, use original
         if (!cleanTitle) cleanTitle = title
-        
+
         return cleanTitle
       }
 
@@ -264,36 +273,36 @@ function createClusterWorker() {
       function getBestClusterName(component) {
         if (component.length === 0) return 'Unknown'
         if (component.length === 1) return component[0].label || component[0].name || 'Single Item'
-        
+
         // Count occurrences of each clean series name
         const nameCount = new Map()
         const degreeMap = new Map()
-        
+
         component.forEach(node => {
           const degree = adjacency.get(node.id)?.size || 0
           degreeMap.set(node.id, degree)
-          
+
           const rawName = node.label || node.name || ''
           const cleanName = extractSeriesName(rawName)
           if (cleanName && cleanName.length > 2) { // Ignore very short names
             nameCount.set(cleanName, (nameCount.get(cleanName) || 0) + 1)
           }
         })
-        
+
         // If we have recurring clean names, use the most common one
         if (nameCount.size > 0) {
           const sortedNames = Array.from(nameCount.entries())
             .sort((a, b) => b[1] - a[1]) // Sort by count descending
-          
+
           if (sortedNames[0][1] > 1) { // If most common name appears more than once
             return sortedNames[0][0]
           }
         }
-        
+
         // Fallback: use the name of the most connected node
         let mostConnected = component[0]
         let maxDegree = degreeMap.get(mostConnected.id) || 0
-        
+
         component.forEach(node => {
           const degree = degreeMap.get(node.id) || 0
           if (degree > maxDegree) {
@@ -301,7 +310,7 @@ function createClusterWorker() {
             mostConnected = node
           }
         })
-        
+
         const bestName = mostConnected.label || mostConnected.name || 'Unknown'
         return extractSeriesName(bestName) || bestName
       }
@@ -309,36 +318,36 @@ function createClusterWorker() {
       // Helper function to check if two titles are related
       function areTitlesRelated(title1, title2) {
         if (!title1 || !title2) return false
-        
+
         // Clean and normalize titles
         const clean1 = title1.toLowerCase().replace(/[^a-z0-9]/g, '')
         const clean2 = title2.toLowerCase().replace(/[^a-z0-9]/g, '')
-        
+
         // Check if one title contains the other
         if (clean1.includes(clean2) || clean2.includes(clean1)) return true
-        
+
         // Calculate similarity (you can adjust the threshold)
         let similarity = 0
         const shorter = clean1.length < clean2.length ? clean1 : clean2
         const longer = clean1.length < clean2.length ? clean2 : clean1
-        
+
         for (let i = 0; i < shorter.length; i++) {
           if (shorter[i] === longer[i]) similarity++
         }
-        
+
         return similarity / longer.length > 0.7
       }
 
       // Find connected components using BFS
       for (const node of nodes) {
-        if (visited.has(node.id)) { 
-          processed++; 
+        if (visited.has(node.id)) {
+          processed++;
           if (processed % 1000 === 0) {
             postMessage({ type: 'progress', text: 'Clustering components ' + processed + '/' + total })
           }
-          continue 
+          continue
         }
-        
+
         // BFS to find connected component
         const component = []
         queue.length = 0
@@ -347,20 +356,20 @@ function createClusterWorker() {
         while (queue.length) {
           const nodeId = queue.shift()
           if (visited.has(nodeId)) continue
-          
+
           visited.add(nodeId)
           const currentNode = idToNode.get(nodeId)
           if (!currentNode) continue
-          
+
           // Only add to component if title is related to existing nodes
-          if (component.length === 0 || 
+          if (component.length === 0 ||
               component.some(node => areTitlesRelated(
                 node.label || node.name,
                 currentNode.label || currentNode.name
               ))) {
             component.push(currentNode)
           }
-          
+
           const neighbors = adjacency.get(nodeId)
           if (neighbors) {
             for (const neighborId of neighbors) {
@@ -380,7 +389,7 @@ function createClusterWorker() {
         // Categorize the component
         const componentSize = component.length
         const totalConnections = component.reduce((sum, n) => sum + (adjacency.get(n.id)?.size || 0), 0)
-        
+
         if (componentSize === 1 && totalConnections === 0) {
           // Truly isolated node
           standaloneItems.push(component[0])
@@ -390,7 +399,7 @@ function createClusterWorker() {
         } else {
           // Create a proper series cluster
           const clusterName = getBestClusterName(component)
-          
+
           seriesClusters.push({
             id: 'series_cluster_' + seriesClusters.length,
             name: clusterName,
@@ -401,7 +410,7 @@ function createClusterWorker() {
             connectionDensity: totalConnections / (componentSize * (componentSize - 1) || 1)
           })
         }
-        
+
         processed++
         if (processed % 1000 === 0) {
           postMessage({ type: 'progress', text: 'Clustering components ' + processed + '/' + total })
@@ -410,33 +419,18 @@ function createClusterWorker() {
 
       // Group standalone items
       if (standaloneItems.length > 0) {
-        // Sort standalone items by type for better grouping
-        standaloneItems.sort((a, b) => {
-          const typeA = a.type || 'unknown'
-          const typeB = b.type || 'unknown'
-          return typeA.localeCompare(typeB)
-        })
-        
-        for (let i = 0; i < standaloneItems.length; i += standaloneGroupSize) {
-          const group = standaloneItems.slice(i, i + standaloneGroupSize)
-          const groupType = group[0]?.type || 'mixed'
-          const groupName = group.length === 1 
-            ? (group[0].label || group[0].name || 'Standalone Item')
-            : group.length <= 20 
-              ? 'Standalone ' + groupType.charAt(0).toUpperCase() + groupType.slice(1)
-              : 'Standalone Group ' + Math.floor(i / standaloneGroupSize + 1)
-          
-          seriesClusters.push({
-            id: 'standalone_group_' + Math.floor(i / standaloneGroupSize),
-            name: groupName,
-            itemIds: group.map(x => x.id),
-            size: group.length,
-            clusterType: 'standalone',
-            isCluster: true,
-            connectionDensity: 0
-          })
-        }
-      }
+        const totalStandaloneItems = standaloneItems.length;
+        const standaloneClusterName = "Big Chungus";
+        seriesClusters.push({
+          id: 'bigChungus',
+          name: standaloneClusterName,
+          itemIds: standaloneItems.map((item) => item.id),
+          size: totalStandaloneItems,
+          clusterType: 'mega',
+          isCluster: true,
+          connectionDensity: 0,
+        });
+}
 
       // Create mega clusters if there are too many series clusters
       // Filter out standalone clusters before mega-clustering
@@ -579,6 +573,107 @@ function setupSVG() {
   svg.selectAll('*').remove()
   container = svg.append('g').attr('class', 'main-container')
 
+  // Add gradients and filters
+  const defs = svg.append('defs')
+
+  // Create gradients for different node types
+  const colors = [
+    { name: '3B82F6', light: '#60A5FA', dark: '#1E40AF' },
+    { name: 'EC4899', light: '#F472B6', dark: '#BE185D' },
+    { name: '10B981', light: '#34D399', dark: '#047857' },
+    { name: '8B5CF6', light: '#A78BFA', dark: '#5B21B6' },
+    { name: '6B7280', light: '#9CA3AF', dark: '#374151' },
+  ]
+
+  colors.forEach((color) => {
+    // Radial gradient for nodes
+    const radialGrad = defs
+      .append('radialGradient')
+      .attr('id', `radial-gradient-${color.name}`)
+      .attr('cx', '30%')
+      .attr('cy', '30%')
+      .attr('r', '70%')
+
+    radialGrad
+      .append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', color.light)
+      .attr('stop-opacity', 1)
+
+    radialGrad
+      .append('stop')
+      .attr('offset', '70%')
+      .attr('stop-color', `#${color.name}`)
+      .attr('stop-opacity', 0.8)
+
+    radialGrad
+      .append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', color.dark)
+      .attr('stop-opacity', 0.6)
+
+    // Glow gradient
+    const glowGrad = defs
+      .append('radialGradient')
+      .attr('id', `glow-gradient-${color.name}`)
+      .attr('cx', '50%')
+      .attr('cy', '50%')
+      .attr('r', '50%')
+
+    glowGrad
+      .append('stop')
+      .attr('offset', '0%')
+      .attr('stop-color', color.light)
+      .attr('stop-opacity', 0.6)
+
+    glowGrad
+      .append('stop')
+      .attr('offset', '100%')
+      .attr('stop-color', `#${color.name}`)
+      .attr('stop-opacity', 0)
+  })
+
+  // Nebula gradient for mega clusters
+  const nebulaGrad = defs
+    .append('radialGradient')
+    .attr('id', 'nebula-gradient')
+    .attr('cx', '50%')
+    .attr('cy', '50%')
+    .attr('r', '50%')
+
+  nebulaGrad
+    .append('stop')
+    .attr('offset', '0%')
+    .attr('stop-color', '#8B5CF6')
+    .attr('stop-opacity', 0.3)
+
+  nebulaGrad
+    .append('stop')
+    .attr('offset', '50%')
+    .attr('stop-color', '#3B82F6')
+    .attr('stop-opacity', 0.2)
+
+  nebulaGrad
+    .append('stop')
+    .attr('offset', '100%')
+    .attr('stop-color', '#1E1B4B')
+    .attr('stop-opacity', 0)
+
+  // Glow filter
+  const glowFilter = defs
+    .append('filter')
+    .attr('id', 'glow')
+    .attr('x', '-50%')
+    .attr('y', '-50%')
+    .attr('width', '200%')
+    .attr('height', '200%')
+
+  glowFilter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur')
+
+  const feMerge = glowFilter.append('feMerge')
+  feMerge.append('feMergeNode').attr('in', 'coloredBlur')
+  feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
+
   zoom = d3
     .zoom()
     .scaleExtent([0.1, 10])
@@ -589,23 +684,49 @@ function setupSVG() {
     })
   svg.call(zoom)
 
-  // Add a background rect for debugging
-  container
-    .append('rect')
-    .attr('width', svgDimensions.value.width)
-    .attr('height', svgDimensions.value.height)
-    .attr('fill', 'none')
-    .attr('stroke', '#444')
-    .attr('stroke-width', 2)
-    .attr('stroke-dasharray', '5,5')
-
   return true
+}
+
+function addParticleEffect(element, container) {
+  if (!element.isCluster || element.size < 50) return
+
+  const particles = container.append('g').attr('class', 'particles')
+
+  for (let i = 0; i < Math.min(element.size / 10, 15); i++) {
+    const angle = (i / 15) * Math.PI * 2
+    const distance = 30 + Math.random() * 40
+
+    particles
+      .append('circle')
+      .attr('cx', element.x + Math.cos(angle) * distance)
+      .attr('cy', element.y + Math.sin(angle) * distance)
+      .attr('r', 0.5 + Math.random() * 1.5)
+      .attr('fill', '#60a5fa')
+      .attr('opacity', 0.7)
+      .transition()
+      .duration(2000 + Math.random() * 3000)
+      .ease(d3.easeLinear)
+      .attr('transform', `rotate(${360} ${element.x} ${element.y})`)
+      .attr('opacity', 0.2)
+      .on('end', function () {
+        d3.select(this).remove()
+      })
+  }
 }
 
 function renderMinimap() {
   if (!minimapRef.value || visibleElements.value.length === 0) return
   const minimap = d3.select(minimapRef.value)
   minimap.selectAll('*').remove()
+
+  // Add minimap background
+  minimap
+    .append('rect')
+    .attr('width', '100%')
+    .attr('height', '100%')
+    .attr('fill', '#0f0f23')
+    .attr('stroke', '#374151')
+    .attr('stroke-width', 1)
 
   const scaleX = d3.scaleLinear().domain([0, svgDimensions.value.width]).range([5, 145])
   const scaleY = d3.scaleLinear().domain([0, svgDimensions.value.height]).range([5, 95])
@@ -619,9 +740,10 @@ function renderMinimap() {
     .attr('class', 'mini-element')
     .attr('cx', (d) => scaleX(d.x || svgDimensions.value.width / 2))
     .attr('cy', (d) => scaleY(d.y || svgDimensions.value.height / 2))
-    .attr('r', (d) => (d.isCluster ? 4 : 2))
+    .attr('r', (d) => (d.isCluster ? 3 : 1.5))
     .attr('fill', (d) => getElementColor(d))
     .attr('opacity', 0.8)
+    .attr('filter', 'url(#glow)')
 }
 
 function renderElements(elements, elementType, links = []) {
@@ -636,8 +758,8 @@ function renderElements(elements, elementType, links = []) {
   // Create local copies to avoid reactive mutations
   const elemsCopy = elements.map((d) => ({
     ...d,
-    x: d.x || svgDimensions.value.width / 2 + (Math.random() - 0.5) * 50, // Reduced initial spread
-    y: d.y || svgDimensions.value.height / 2 + (Math.random() - 0.5) * 50, // Reduced initial spread
+    x: d.x || svgDimensions.value.width / 2 + (Math.random() - 0.5) * 100,
+    y: d.y || svgDimensions.value.height / 2 + (Math.random() - 0.5) * 100,
   }))
 
   // Create node lookup map for link references
@@ -657,17 +779,24 @@ function renderElements(elements, elementType, links = []) {
   // Create simulation with adjusted forces
   simulation = d3
     .forceSimulation(elemsCopy)
-    .force('charge', d3.forceManyBody().strength(-200)) // Reduced repulsion
+    .force('charge', d3.forceManyBody().strength(-200)) // Reduce repulsion strength
     .force(
       'center',
       d3.forceCenter(svgDimensions.value.width / 2, svgDimensions.value.height / 2).strength(0.1),
-    )
+    ) // Adjust center strength
     .force(
       'collision',
       d3
         .forceCollide()
-        .radius((d) => (elementType === 'cluster' ? Math.max(30, Math.sqrt(d.size || 1) * 5) : 20))
-        .strength(0.5),
+        .radius((d) => Math.max(25, Math.sqrt(d.size || 1) * 6)) // Adjust collision radius
+        .strength(0.8), // Adjust collision strength
+    )
+    .force(
+      'link',
+      d3
+        .forceLink(processedLinks)
+        .distance(150) // Adjust link distance
+        .strength(0.5), // Adjust link strength
     )
 
   // Add link force if we have links
@@ -677,11 +806,11 @@ function renderElements(elements, elementType, links = []) {
       d3
         .forceLink(processedLinks)
         .id((d) => d.id)
-        .distance(50) // Reduced link distance
-        .strength(1), // Increased link strength
+        .distance(80)
+        .strength(0.8),
     )
 
-    // Create links
+    // Create links with energy beam effect
     container
       .append('g')
       .attr('class', 'links')
@@ -689,12 +818,13 @@ function renderElements(elements, elementType, links = []) {
       .data(processedLinks)
       .join('line')
       .attr('class', 'link')
-      .attr('stroke', '#6B7280')
-      .attr('stroke-width', 1)
-      .attr('stroke-opacity', 0.3)
+      .attr('stroke', '#60a5fa')
+      .attr('stroke-width', 1.5)
+      .attr('stroke-opacity', 0.4)
+      .attr('filter', 'url(#glow)')
   }
 
-  // Create nodes
+  // Create node groups
   const elementGroups = container
     .append('g')
     .attr('class', 'nodes')
@@ -709,53 +839,100 @@ function renderElements(elements, elementType, links = []) {
     .on('click', handleElementClick)
     .on('dblclick', handleElementDoubleClick)
 
-  // Add circles to nodes
+  // Add nebula backgrounds for mega clusters
+  elementGroups
+    .filter((d) => d.clusterType === 'mega')
+    .insert('ellipse', ':first-child')
+    .attr('class', 'nebula-background')
+    .attr('rx', (d) => Math.min(80, Math.max(40, Math.sqrt(d.size || 1) * 8)))
+    .attr('ry', (d) => Math.min(60, Math.max(30, Math.sqrt(d.size || 1) * 6)))
+    .attr('fill', 'url(#nebula-gradient)')
+    .attr('opacity', 0.3)
+
+  // Add outer glow circles
   elementGroups
     .append('circle')
+    .attr('class', 'node-glow')
     .attr('r', (d) => {
       if (elementType === 'cluster') {
-        const baseRadius = 20
-        const sizeRadius = Math.sqrt(d.size || 1) * 3
-        const maxRadius = 60 // Reduced maximum radius
-        return Math.min(maxRadius, Math.max(baseRadius, sizeRadius))
+        const baseRadius = 25
+        const sizeRadius = Math.sqrt(d.size || 1) * 4
+        const maxRadius = 75
+        return Math.min(maxRadius, Math.max(baseRadius, sizeRadius)) + 12
       } else {
-        return 12 // Slightly smaller nodes
+        return 20
       }
     })
-    .attr('fill', (d) => getElementColor(d))
+    .attr('fill', (d) => {
+      const color = getElementColor(d).substring(1)
+      return `url(#glow-gradient-${color})`
+    })
+    .attr('opacity', 0.4)
+
+  // Add main node circles
+  elementGroups
+    .append('circle')
+    .attr('class', 'node-core')
+    .attr('r', (d) => {
+      if (elementType === 'cluster') {
+        const baseRadius = 25
+        const sizeRadius = Math.sqrt(d.size || 1) * 4
+        const maxRadius = 75
+        return Math.min(maxRadius, Math.max(baseRadius, sizeRadius))
+      } else {
+        return 15
+      }
+    })
+    .attr('fill', (d) => {
+      const color = getElementColor(d).substring(1)
+      return `url(#radial-gradient-${color})`
+    })
     .attr('stroke', (d) => getElementStrokeColor(d))
     .attr('stroke-width', 2)
+    .attr('filter', 'url(#glow)')
 
-  // Add labels
+  // Add inner sparkle effect for clusters
+  elementGroups
+    .filter((d) => d.isCluster)
+    .append('circle')
+    .attr('class', 'node-sparkle')
+    .attr('r', 3)
+    .attr('fill', '#ffffff')
+    .attr('opacity', 0.8)
+    .attr('cx', -5)
+    .attr('cy', -5)
+
+  // Add labels with better styling
   elementGroups
     .append('text')
     .attr('class', 'element-label')
     .attr('text-anchor', 'middle')
     .attr('dy', (d) => {
       if (elementType === 'cluster') {
-        const baseRadius = 20
-        const sizeRadius = Math.sqrt(d.size || 1) * 3
-        const maxRadius = 60
+        const baseRadius = 25
+        const sizeRadius = Math.sqrt(d.size || 1) * 4
+        const maxRadius = 75
         const radius = Math.min(maxRadius, Math.max(baseRadius, sizeRadius))
-        return radius + 16
+        return radius + 20
       } else {
-        return 12 + 16
+        return 15 + 20
       }
     })
     .attr('fill', '#E5E7EB')
     .attr('font-size', (d) => {
       if (elementType === 'cluster') {
-        const baseSize = Math.max(10, Math.min(14, Math.log(d.size || 1) * 2 + 8))
+        const baseSize = Math.max(11, Math.min(16, Math.log(d.size || 1) * 2 + 9))
         return baseSize + 'px'
       } else {
-        return '10px'
+        return '11px'
       }
     })
     .attr('font-weight', elementType === 'cluster' ? 'bold' : 'normal')
+    .attr('text-shadow', '2px 2px 4px rgba(0,0,0,0.8)')
     .style('pointer-events', 'none')
     .text((d) => {
       const name = d.name || d.label || `${d.type} ${d.id}`
-      const maxLength = elementType === 'cluster' ? (d.size > 100 ? 30 : d.size > 50 ? 25 : 20) : 22
+      const maxLength = elementType === 'cluster' ? (d.size > 100 ? 35 : d.size > 50 ? 30 : 25) : 25
       return name.length > maxLength ? name.substring(0, maxLength - 3) + '...' : name
     })
 
@@ -773,13 +950,20 @@ function renderElements(elements, elementType, links = []) {
     elementGroups.attr('transform', (d) => `translate(${d.x},${d.y})`)
   })
 
+  // Add particle effects for large clusters
+  setTimeout(() => {
+    elemsCopy
+      .filter((d) => d.isCluster && d.size > 30)
+      .forEach((d) => addParticleEffect(d, container))
+  }, 1000)
+
   // Heat up the simulation
   simulation.alpha(1).restart()
 
   // Update visible elements
   nextTick(() => {
     visibleElements.value = elemsCopy
-    setTimeout(() => renderMinimap(), 100)
+    setTimeout(() => renderMinimap(), 200)
   })
 }
 
@@ -795,40 +979,128 @@ function renderOverview() {
 }
 
 function renderClusters(clusterArray) {
-  console.log(`Rendering ${clusterArray.length} clusters`)
+  console.log(`Rendering ${clusterArray.length} clusters as star system`)
 
-  // Sort clusters by size for better positioning
+  // Sort clusters by size
   const sortedClusters = [...clusterArray].sort((a, b) => b.size - a.size)
 
-  sortedClusters.forEach((c, i) => {
-    // Better initial positioning based on cluster size and index
-    const totalClusters = sortedClusters.length
-    const ring = Math.floor(Math.sqrt(i)) // Which ring to place in
-    const ringRadius =
-      Math.min(svgDimensions.value.width, svgDimensions.value.height) * (0.2 + ring * 0.15)
-    const ringSize = Math.max(1, Math.ceil(Math.sqrt(totalClusters)) - ring) // Items in this ring
-    const angleStep = (2 * Math.PI) / Math.max(ringSize, 1)
-    const angle = (i % ringSize) * angleStep
+  // Separate Big Chungus and other clusters
+  const bigChungus = sortedClusters.find((c) => c.id === 'bigChungus')
+  const otherClusters = sortedClusters.filter((c) => c.id !== 'bigChungus')
 
-    // Add some randomness but keep structure
-    const jitterX = (Math.random() - 0.5) * 50
-    const jitterY = (Math.random() - 0.5) * 50
+  // Calculate dimensions
+  const centerX = svgDimensions.value.width / 2
+  const centerY = svgDimensions.value.height / 2
+  const maxOrbitRadius = Math.min(centerX, centerY) * 0.8
 
-    c.x = svgDimensions.value.width / 2 + Math.cos(angle) * ringRadius + jitterX
-    c.y = svgDimensions.value.height / 2 + Math.sin(angle) * ringRadius + jitterY
-    c.isCluster = true
+  // Position Big Chungus in the center
+  if (bigChungus) {
+    bigChungus.x = centerX
+    bigChungus.y = centerY
+    bigChungus.fixed = true // Keep it fixed in center
+  }
+
+  // Create orbiting rings based on cluster sizes
+  const orbits = []
+  let currentRadius = 150 // Start with inner orbit
+
+  // Group clusters by size ranges
+  const sizeGroups = {}
+  otherClusters.forEach((cluster) => {
+    const sizeKey = Math.floor(Math.log2(cluster.size))
+    if (!sizeGroups[sizeKey]) sizeGroups[sizeKey] = []
+    sizeGroups[sizeKey].push(cluster)
   })
 
-  renderElements(sortedClusters, 'cluster')
+  // Create orbits from size groups
+  Object.entries(sizeGroups)
+    .sort((a, b) => Number(b[0]) - Number(a[0])) // Larger clusters in inner orbits
+    .forEach(([sizeKey, clusters]) => {
+      orbits.push({
+        radius: currentRadius,
+        clusters: clusters,
+      })
+      currentRadius += 120 + Math.random() * 50 // Add some randomness to orbit spacing
+    })
+
+  // Position clusters in their orbits
+  orbits.forEach((orbit) => {
+    const clusterCount = orbit.clusters.length
+    orbit.clusters.forEach((cluster, i) => {
+      // Calculate base angle for even distribution
+      const baseAngle = (i / clusterCount) * 2 * Math.PI
+
+      // Add some random offset to make it look more natural
+      const angleOffset = (Math.random() - 0.5) * 0.2
+      const radiusOffset = (Math.random() - 0.5) * 20
+
+      const angle = baseAngle + angleOffset
+      const radius = orbit.radius + radiusOffset
+
+      // Set cluster position
+      cluster.x = centerX + Math.cos(angle) * radius
+      cluster.y = centerY + Math.sin(angle) * radius
+
+      // Store orbital properties for animation
+      cluster.orbitRadius = radius
+      cluster.orbitAngle = angle
+      cluster.orbitSpeed = 0.001 / Math.sqrt(radius) // Slower speed for outer orbits
+    })
+  })
+
+  // Set up force simulation with modified forces
+  if (simulation) simulation.stop()
+
+  simulation = d3
+    .forceSimulation([bigChungus, ...otherClusters])
+    .force(
+      'collision',
+      d3.forceCollide().radius((d) => Math.sqrt(d.size) * 2),
+    )
+    .force('orbit', (alpha) => {
+      otherClusters.forEach((cluster) => {
+        if (!cluster.orbitAngle) return
+
+        // Update orbital position
+        cluster.orbitAngle += cluster.orbitSpeed
+        const targetX = centerX + Math.cos(cluster.orbitAngle) * cluster.orbitRadius
+        const targetY = centerY + Math.sin(cluster.orbitAngle) * cluster.orbitRadius
+
+        cluster.vx = (targetX - cluster.x) * alpha
+        cluster.vy = (targetY - cluster.y) * alpha
+      })
+    })
+    .force('center', d3.forceCenter(centerX, centerY).strength(0.01))
+
+  // Add particle effects for Big Chungus
+  if (bigChungus) {
+    const solarFlareCount = 24
+    for (let i = 0; i < solarFlareCount; i++) {
+      const angle = (i / solarFlareCount) * Math.PI * 2
+      const flareLength = 40 + Math.random() * 30
+
+      container
+        .append('path')
+        .attr('class', 'solar-flare')
+        .attr(
+          'd',
+          `M ${centerX} ${centerY} l ${Math.cos(angle) * flareLength} ${Math.sin(angle) * flareLength}`,
+        )
+        .attr('stroke', '#FDB813')
+        .attr('stroke-width', 2)
+        .attr('opacity', 0.4)
+        .style('filter', 'url(#glow)')
+    }
+  }
+
+  renderElements([bigChungus, ...otherClusters], 'cluster')
 }
 
 function renderClusterDetail(cluster) {
   console.log('Rendering cluster:', cluster)
   let items = []
 
-  // Handle mega clusters differently
   if (cluster.clusterType === 'mega' && cluster.clusters) {
-    // Collect all items from all sub-clusters
     items = cluster.clusters.flatMap((subCluster) => {
       if (subCluster.itemIds) {
         return subCluster.itemIds.map((id) => nodeMap.get(id)).filter(Boolean)
@@ -836,7 +1108,6 @@ function renderClusterDetail(cluster) {
       return []
     })
   } else {
-    // Handle regular series clusters
     if (cluster.items && cluster.items.length > 0) {
       items = cluster.items.filter((item) => item && item.id)
     } else if (cluster.itemIds && cluster.itemIds.length > 0) {
@@ -846,10 +1117,8 @@ function renderClusterDetail(cluster) {
 
   console.log(`Found ${items.length} items in cluster`)
 
-  // Create map for quick lookup
   const validItemsMap = new Map(items.map((item) => [item.id, item]))
 
-  // Process links
   const relevantLinks = rawLinks.value
     .filter((link) => {
       const sourceId = typeof link.source === 'object' ? link.source.id : link.source
@@ -872,6 +1141,7 @@ function renderClusterDetail(cluster) {
   console.log(`Rendering cluster with ${items.length} nodes and ${relevantLinks.length} links`)
   renderElements(items, 'node', relevantLinks)
 }
+
 /**
  * =========================
  * Events / interactions
@@ -880,20 +1150,48 @@ function renderClusterDetail(cluster) {
 function handleElementMouseover(event, d) {
   hoveredElement.value = d
   tooltipPos.value = { x: event.pageX + 10, y: event.pageY - 10 }
+
+  // Enhanced hover effect
+  d3.select(event.currentTarget)
+    .select('.node-core')
+    .transition()
+    .duration(200)
+    .attr('transform', 'scale(1.15)')
+    .attr('filter', 'url(#glow) brightness(1.3)')
+
+  d3.select(event.currentTarget)
+    .select('.node-glow')
+    .transition()
+    .duration(200)
+    .attr('opacity', 0.8)
+    .attr('transform', 'scale(1.2)')
 }
 
-function handleElementMouseout() {
+function handleElementMouseout(event, d) {
   hoveredElement.value = null
+
+  // Reset hover effect
+  d3.select(event.currentTarget)
+    .select('.node-core')
+    .transition()
+    .duration(200)
+    .attr('transform', 'scale(1)')
+    .attr('filter', 'url(#glow)')
+
+  d3.select(event.currentTarget)
+    .select('.node-glow')
+    .transition()
+    .duration(200)
+    .attr('opacity', 0.4)
+    .attr('transform', 'scale(1)')
 }
 
 function handleElementClick(event, d) {
-  // Selection hooks here if needed
   console.log('Element clicked:', d)
 }
 
 function handleElementDoubleClick(event, d) {
   if (d.isCluster) {
-    // For mega clusters, add both the mega cluster and its sub-clusters to the breadcrumb
     if (d.clusterType === 'mega' && d.clusters) {
       breadcrumb.value.push({
         name: d.name,
@@ -995,12 +1293,10 @@ function focusOnNode(node) {
   searchTerm.value = ''
   searchResults.value = []
 
-  // Find series cluster containing this node
   const targetCluster = latestSeriesClusters.find((c) => (c.itemIds || []).includes(node.id))
   if (targetCluster) {
     breadcrumb.value = []
     renderClusterDetail(targetCluster)
-    // Center on node after layout warms up
     setTimeout(() => {
       const foundNode = visibleElements.value.find((el) => el.id === node.id)
       if (foundNode && typeof foundNode.x === 'number' && typeof foundNode.y === 'number') {
@@ -1011,7 +1307,7 @@ function focusOnNode(node) {
           .duration(750)
           .call(zoom.transform, d3.zoomIdentity.translate(centerX, centerY).scale(2))
       }
-    }, 600)
+    }, 800)
   }
 }
 
@@ -1059,10 +1355,9 @@ function handleMinimapClick(event) {
  * =========================
  */
 async function initializeVisualization(clusterPayload) {
-  console.log('🚀 Initializing hierarchical visualization...')
+  console.log('Initializing hierarchical visualization...')
   console.log('Clusters received:', clusterPayload.clusters.length)
 
-  // Wait for DOM to be fully ready
   await nextTick()
   await nextTick()
 
@@ -1084,7 +1379,6 @@ async function initializeVisualization(clusterPayload) {
     return
   }
 
-  // Write clusters Map
   const clusterMap = new Map()
   clusterPayload.clusters.forEach((c) => {
     clusterMap.set(c.id, { ...c })
@@ -1094,7 +1388,6 @@ async function initializeVisualization(clusterPayload) {
   totalClusters.value = clusterMap.size
   latestSeriesClusters = clusterPayload.seriesClusters
 
-  // Annotate nodes with cluster info
   const idToClusterName = new Map()
   clusterPayload.seriesClusters.forEach((c) => {
     c.itemIds.forEach((id) => idToClusterName.set(id, c.name))
@@ -1103,10 +1396,9 @@ async function initializeVisualization(clusterPayload) {
     n.clusterName = idToClusterName.get(id) || 'Standalone'
   })
 
-  // Another nextTick to ensure everything is ready
   await nextTick()
   renderOverview()
-  console.log('✅ Hierarchical visualization initialized')
+  console.log('Hierarchical visualization initialized')
 }
 
 /**
@@ -1116,7 +1408,7 @@ async function initializeVisualization(clusterPayload) {
  */
 onMounted(async () => {
   try {
-    console.log('📡 Fetching graph data...')
+    console.log('Fetching graph data...')
     const res = await axios.get('http://127.0.0.1:8000/graph')
 
     const nodes = res.data.nodes || []
@@ -1128,9 +1420,8 @@ onMounted(async () => {
     rawLinks.value = links
     totalNodes.value = nodes.length
 
-    console.log(`✅ Loaded ${nodes.length} nodes and ${links.length} links`)
+    console.log(`Loaded ${nodes.length} nodes and ${links.length} links`)
 
-    // Basic normalization + O(n+m) degree counting
     const degreeMap = new Map()
     links.forEach((link) => {
       const s = typeof link.source === 'object' ? link.source.id : link.source
@@ -1142,14 +1433,12 @@ onMounted(async () => {
     nodes.forEach((node) => {
       if (!node.label && !node.name) node.label = `${node.type || 'Item'} ${node.id}`
       if (!node.type) {
-        // Keep some color variety if type missing
         node.type = Math.random() > 0.6 ? 'anime' : Math.random() > 0.5 ? 'manga' : 'other'
       }
       node.connectionCount = degreeMap.get(node.id) || 0
-      nodeMap.set(node.id, node) // Ensure all nodes are added to nodeMap
+      nodeMap.set(node.id, node)
     })
 
-    // Kick off worker clustering
     const worker = createClusterWorker()
     worker.onmessage = async (msg) => {
       const { type } = msg.data || {}
@@ -1157,15 +1446,11 @@ onMounted(async () => {
         progressText.value = msg.data.text
       } else if (type === 'done') {
         progressText.value = ''
-
-        // Set loading to false FIRST
         loading.value = false
 
-        // Wait for template to re-render
         await nextTick()
         await nextTick()
 
-        // Now try to initialize
         try {
           await initializeVisualization(msg.data)
         } catch (err) {
@@ -1185,7 +1470,7 @@ onMounted(async () => {
 
     const cleanNodes = JSON.parse(JSON.stringify(nodes))
     const cleanLinks = JSON.parse(JSON.stringify(links))
-    console.log('nodeMap contents:', Array.from(nodeMap.keys()))
+
     worker.postMessage({
       nodes: cleanNodes,
       links: cleanLinks,
@@ -1194,61 +1479,132 @@ onMounted(async () => {
       megaSize: MEGA_CLUSTER_SIZE,
     })
   } catch (err) {
-    console.error('❌ Error:', err)
+    console.error('Error:', err)
     error.value = 'Failed to load graph data: ' + (err.message || err)
     loading.value = false
   }
 })
 </script>
+
 <style scoped>
 /* Main container */
 .clustered-graph-container {
   padding: 24px;
   padding-top: 60px;
-  background-color: #111827;
+  background: radial-gradient(ellipse at center, #0f172a 0%, #020617 70%, #000000 100%);
   min-height: 100vh;
   color: white;
   max-width: 100%;
   margin: 0 auto;
+  position: relative;
+  overflow: hidden;
+}
+
+.clustered-graph-container::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    radial-gradient(2px 2px at 20px 30px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(2px 2px at 40px 70px, rgba(255, 255, 255, 0.7), transparent),
+    radial-gradient(1px 1px at 90px 40px, rgba(255, 255, 255, 1), transparent),
+    radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.6), transparent),
+    radial-gradient(2px 2px at 160px 30px, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 200px 120px, rgba(255, 255, 255, 0.4), transparent),
+    radial-gradient(2px 2px at 300px 60px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 350px 180px, rgba(255, 255, 255, 0.7), transparent);
+  background-repeat: repeat;
+  background-size: 400px 200px;
+  animation: twinkle 6s ease-in-out infinite alternate;
+  pointer-events: none;
+  z-index: 0;
+}
+
+@keyframes twinkle {
+  0% {
+    opacity: 0.3;
+    transform: translateX(0px) translateY(0px);
+  }
+  25% {
+    opacity: 0.8;
+  }
+  50% {
+    opacity: 0.5;
+    transform: translateX(2px) translateY(-1px);
+  }
+  75% {
+    opacity: 0.9;
+  }
+  100% {
+    opacity: 0.4;
+    transform: translateX(-1px) translateY(1px);
+  }
 }
 
 .graph-title {
-  font-size: 1.5rem;
+  font-size: 1.8rem;
   font-weight: bold;
-  margin-bottom: 16px;
+  margin-bottom: 20px;
+  position: relative;
+  z-index: 2;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
+  background: linear-gradient(45deg, #60a5fa, #a78bfa, #60a5fa);
+  background-size: 200% 200%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  animation: gradient-shift 3s ease-in-out infinite;
+}
+
+@keyframes gradient-shift {
+  0%,
+  100% {
+    background-position: 0% 50%;
+  }
+  50% {
+    background-position: 100% 50%;
+  }
 }
 
 /* Search container */
 .search-container {
-  margin-bottom: 16px;
+  margin-bottom: 20px;
   display: flex;
   gap: 16px;
   align-items: center;
+  position: relative;
+  z-index: 2;
 }
 
 .search-input-wrapper {
   position: relative;
   flex: 1;
-  max-width: 448px;
+  max-width: 500px;
 }
 
 .search-input {
   width: 100%;
-  padding: 8px 16px;
-  background-color: #1f2937;
-  border: 1px solid #4b5563;
-  border-radius: 6px;
+  padding: 12px 20px;
+  background: rgba(15, 23, 42, 0.8);
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  border-radius: 12px;
   color: white;
   outline: none;
-  transition: border-color 0.2s;
+  transition: all 0.3s ease;
+  font-size: 14px;
+  backdrop-filter: blur(10px);
 }
 
 .search-input::placeholder {
-  color: #9ca3af;
+  color: rgba(156, 163, 175, 0.8);
 }
 
 .search-input:focus {
   border-color: #3b82f6;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  background: rgba(15, 23, 42, 0.95);
 }
 
 .search-results {
@@ -1256,20 +1612,21 @@ onMounted(async () => {
   top: 100%;
   left: 0;
   right: 0;
-  background-color: #1f2937;
-  border: 1px solid #4b5563;
+  background: rgba(15, 23, 42, 0.95);
+  border: 2px solid rgba(59, 130, 246, 0.3);
   border-top: none;
-  border-radius: 0 0 6px 6px;
-  max-height: 200px;
+  border-radius: 0 0 12px 12px;
+  max-height: 250px;
   overflow-y: auto;
   z-index: 10;
+  backdrop-filter: blur(15px);
 }
 
 .search-result-item {
-  padding: 8px 16px;
+  padding: 12px 20px;
   cursor: pointer;
-  border-bottom: 1px solid #374151;
-  transition: background-color 0.2s;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.3);
+  transition: all 0.2s ease;
 }
 
 .search-result-item:last-child {
@@ -1277,268 +1634,558 @@ onMounted(async () => {
 }
 
 .search-result-item:hover {
-  background-color: #374151;
+  background: rgba(59, 130, 246, 0.1);
+  transform: translateX(4px);
 }
 
 .search-result-title {
   font-weight: 600;
-  margin-bottom: 2px;
+  margin-bottom: 3px;
+  color: #e5e7eb;
 }
 
 .search-result-subtitle {
-  font-size: 0.875rem;
-  color: #9ca3af;
+  font-size: 0.85rem;
+  color: rgba(156, 163, 175, 0.8);
 }
 
 /* Loading */
 .loading-container {
   text-align: center;
-  padding: 40px;
+  padding: 60px 40px;
+  position: relative;
+  z-index: 2;
+}
+
+.loading-spinner {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 20px;
+  border: 4px solid rgba(59, 130, 246, 0.2);
+  border-top: 4px solid #3b82f6;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
 }
 
 .loading-subtitle {
-  font-size: 0.875rem;
-  opacity: 0.7;
-  margin-top: 8px;
+  font-size: 0.9rem;
+  opacity: 0.8;
+  margin-top: 10px;
 }
 
 /* Graph wrapper */
 .graph-wrapper {
   position: relative;
+  z-index: 2;
 }
 
 .canvas-container {
   position: relative;
-  background-color: #1f2937;
-  border-radius: 8px;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(26, 26, 46, 0.8) 0%,
+    rgba(22, 33, 62, 0.9) 50%,
+    rgba(15, 15, 35, 0.95) 100%
+  );
+  border-radius: 16px;
   overflow: hidden;
-  height: 700px;
-  border: 1px solid #374151;
+  height: 750px;
+  border: 2px solid rgba(59, 130, 246, 0.2);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 0 50px rgba(59, 130, 246, 0.1),
+    inset 0 0 100px rgba(59, 130, 246, 0.05);
+}
+
+.starfield-background {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background-image:
+    radial-gradient(2px 2px at 30px 50px, rgba(255, 255, 255, 0.8), transparent),
+    radial-gradient(1px 1px at 80px 120px, rgba(96, 165, 250, 0.6), transparent),
+    radial-gradient(1px 1px at 150px 40px, rgba(167, 139, 250, 0.5), transparent),
+    radial-gradient(2px 2px at 200px 180px, rgba(255, 255, 255, 0.9), transparent),
+    radial-gradient(1px 1px at 280px 90px, rgba(52, 211, 153, 0.4), transparent),
+    radial-gradient(2px 2px at 350px 160px, rgba(236, 72, 153, 0.3), transparent);
+  background-repeat: repeat;
+  background-size: 400px 300px;
+  animation:
+    drift 20s linear infinite,
+    sparkle 4s ease-in-out infinite alternate;
+  pointer-events: none;
+}
+
+@keyframes drift {
+  0% {
+    transform: translateX(0px) translateY(0px);
+  }
+  100% {
+    transform: translateX(-400px) translateY(-300px);
+  }
+}
+
+@keyframes sparkle {
+  0% {
+    opacity: 0.4;
+  }
+  100% {
+    opacity: 0.8;
+  }
 }
 
 .graph-svg {
   width: 100%;
   height: 100%;
   cursor: grab;
+  position: relative;
+  z-index: 3;
 }
 
 .graph-svg:active {
   cursor: grabbing;
 }
 
-/* Element labels styling */
-.element-label {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  text-shadow: 1px 1px 2px rgba(0, 0, 0, 0.8);
+/* Enhanced node effects */
+.node-core {
+  transition: all 0.3s ease;
+}
+
+.node-glow {
+  transition: all 0.3s ease;
+}
+
+.element:hover .node-core {
+  filter: brightness(1.4) drop-shadow(0 0 15px currentColor);
+}
+
+.element:hover .node-glow {
+  opacity: 0.8 !important;
+}
+
+.element:hover .element-label {
+  fill: #ffffff;
+  font-weight: bold;
+  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
+}
+
+/* Animated links */
+.link {
+  transition: all 0.3s ease;
+  stroke-dasharray: 4, 6;
+  animation: energy-flow 3s linear infinite;
+}
+
+@keyframes energy-flow {
+  0% {
+    stroke-dashoffset: 0;
+    stroke-opacity: 0.4;
+  }
+  50% {
+    stroke-opacity: 0.7;
+  }
+  100% {
+    stroke-dashoffset: 10;
+    stroke-opacity: 0.4;
+  }
+}
+
+.link:hover {
+  stroke: #60a5fa;
+  stroke-width: 3;
+  filter: drop-shadow(0 0 8px #60a5fa);
+  stroke-opacity: 0.9 !important;
+}
+
+/* Particle effects */
+.particles circle {
+  animation: orbit 4s linear infinite;
+}
+
+@keyframes orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Nebula background effect */
+.nebula-background {
+  animation: nebula-pulse 6s ease-in-out infinite alternate;
+}
+
+@keyframes nebula-pulse {
+  0% {
+    opacity: 0.2;
+    transform: scale(0.95);
+  }
+  100% {
+    opacity: 0.4;
+    transform: scale(1.05);
+  }
+}
+
+/* Node sparkle effect */
+.node-sparkle {
+  animation: sparkle-twinkle 2s ease-in-out infinite alternate;
+}
+
+@keyframes sparkle-twinkle {
+  0% {
+    opacity: 0.6;
+    transform: scale(0.8);
+  }
+  100% {
+    opacity: 1;
+    transform: scale(1.2);
+  }
 }
 
 /* Minimap */
 .minimap-container {
   position: absolute;
-  bottom: 16px;
-  right: 16px;
-  background: rgba(0, 0, 0, 0.8);
-  padding: 8px;
-  border-radius: 6px;
-  border: 1px solid #4b5563;
+  bottom: 20px;
+  right: 20px;
+  background: rgba(0, 0, 0, 0.85);
+  padding: 12px;
+  border-radius: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  backdrop-filter: blur(15px);
+  box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
 }
 
 .minimap-svg {
   cursor: pointer;
-  border: 1px solid #374151;
+  border: 1px solid rgba(75, 85, 99, 0.5);
+  border-radius: 6px;
+  background: rgba(15, 15, 35, 0.8);
 }
 
 /* Info panel */
 .info-panel {
   position: absolute;
-  top: 16px;
-  left: 16px;
+  top: 20px;
+  left: 20px;
   background: rgba(0, 0, 0, 0.9);
-  padding: 12px;
-  border-radius: 6px;
-  border: 1px solid #4b5563;
-  font-size: 0.875rem;
-  max-width: 280px;
-  backdrop-filter: blur(4px);
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  font-size: 0.9rem;
+  max-width: 320px;
+  backdrop-filter: blur(15px);
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
 }
 
 .info-panel > div {
-  margin: 2px 0;
+  margin: 4px 0;
+}
+
+.info-panel strong {
+  color: #60a5fa;
+  font-size: 1.1rem;
 }
 
 .legend {
-  margin-top: 8px;
-  font-size: 0.75rem;
+  margin-top: 12px;
+  font-size: 0.8rem;
   opacity: 0.9;
+  border-top: 1px solid rgba(75, 85, 99, 0.3);
+  padding-top: 8px;
 }
 
 .legend > div {
-  margin: 2px 0;
+  margin: 4px 0;
+  display: flex;
+  align-items: center;
+}
+
+.legend-icon {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  margin-right: 6px;
+}
+
+.legend-icon.series-cluster {
+  background: #3b82f6;
+}
+
+.legend-icon.mega-cluster {
+  background: #10b981;
+}
+
+.legend-icon.anime-node {
+  background: #3b82f6;
+}
+
+.legend-icon.manga-node {
+  background: #ec4899;
+}
+
+.legend-icon.other-node {
+  background: #6b7280;
 }
 
 .instructions {
   font-size: 0.75rem;
   opacity: 0.8;
-  margin-top: 6px;
-  border-top: 1px solid #374151;
-  padding-top: 4px;
+  margin-top: 8px;
+  border-top: 1px solid rgba(75, 85, 99, 0.3);
+  padding-top: 6px;
 }
 
 .instructions > div {
-  margin: 1px 0;
+  margin: 2px 0;
 }
 
 /* Controls */
 .controls-panel {
   position: absolute;
-  top: 16px;
-  right: 16px;
+  top: 20px;
+  right: 20px;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 10px;
 }
 
 .control-button {
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.85);
   color: white;
-  border: 1px solid #4b5563;
-  padding: 8px 12px;
-  border-radius: 6px;
-  font-size: 0.875rem;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  padding: 12px 16px;
+  border-radius: 8px;
+  font-size: 0.9rem;
   cursor: pointer;
-  transition: all 0.2s;
-  backdrop-filter: blur(4px);
+  transition: all 0.3s ease;
+  backdrop-filter: blur(15px);
+  min-width: 100px;
 }
 
 .control-button:hover {
-  background-color: #374151;
-  border-color: #6b7280;
+  background: rgba(59, 130, 246, 0.2);
+  border-color: #60a5fa;
+  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
+  transform: translateY(-2px);
 }
 
 .back-button {
-  background-color: #1f2937;
+  background: rgba(59, 130, 246, 0.2);
   border-color: #3b82f6;
   color: #60a5fa;
 }
 
 .back-button:hover {
-  background-color: #3b82f6;
+  background: rgba(59, 130, 246, 0.4);
   color: white;
+  box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
 }
 
 /* Breadcrumb */
 .breadcrumb {
   position: absolute;
-  top: 16px;
+  top: 20px;
   left: 50%;
   transform: translateX(-50%);
   background: rgba(0, 0, 0, 0.9);
-  padding: 8px 16px;
-  border-radius: 6px;
-  border: 1px solid #4b5563;
-  font-size: 0.875rem;
+  padding: 12px 20px;
+  border-radius: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.3);
+  font-size: 0.9rem;
   display: flex;
   align-items: center;
-  gap: 8px;
-  backdrop-filter: blur(4px);
-  max-width: 500px;
+  gap: 12px;
+  backdrop-filter: blur(15px);
+  max-width: 600px;
   overflow-x: auto;
+  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
 }
 
 .breadcrumb-item {
   cursor: pointer;
   color: #60a5fa;
   white-space: nowrap;
-  transition: color 0.2s;
+  transition: all 0.2s ease;
+  padding: 4px 8px;
+  border-radius: 6px;
 }
 
 .breadcrumb-item:hover {
   color: #3b82f6;
+  background: rgba(59, 130, 246, 0.1);
+  transform: scale(1.05);
 }
 
 .breadcrumb-separator {
-  color: #9ca3af;
+  color: rgba(156, 163, 175, 0.6);
   margin: 0 4px;
+  font-weight: bold;
 }
 
 /* Tooltip */
 .tooltip {
   position: absolute;
   background: rgba(0, 0, 0, 0.95);
-  padding: 12px;
-  border-radius: 8px;
-  border: 1px solid #4b5563;
-  font-size: 0.875rem;
-  max-width: 280px;
-  z-index: 30;
+  padding: 16px;
+  border-radius: 12px;
+  border: 2px solid rgba(59, 130, 246, 0.4);
+  font-size: 0.9rem;
+  max-width: 320px;
+  z-index: 50;
   pointer-events: none;
-  backdrop-filter: blur(4px);
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+  backdrop-filter: blur(20px);
+  box-shadow:
+    0 10px 25px rgba(0, 0, 0, 0.5),
+    0 0 30px rgba(59, 130, 246, 0.2);
 }
 
 .tooltip-title {
   font-weight: bold;
-  margin-bottom: 6px;
+  margin-bottom: 8px;
   color: #f9fafb;
-  border-bottom: 1px solid #374151;
-  padding-bottom: 4px;
+  border-bottom: 1px solid rgba(75, 85, 99, 0.4);
+  padding-bottom: 6px;
+  font-size: 1rem;
 }
 
 .tooltip-item {
   color: #d1d5db;
-  margin: 3px 0;
+  margin: 4px 0;
   display: flex;
   justify-content: space-between;
+  align-items: center;
 }
 
-/* Links */
-.link {
-  transition: opacity 0.2s;
+/* Enhanced element labels */
+.element-label {
+  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9);
+  transition: all 0.3s ease;
 }
 
-/* Responsive */
+/* Error container */
+.error-container {
+  text-align: center;
+  padding: 40px;
+  background: rgba(239, 68, 68, 0.1);
+  border: 2px solid rgba(239, 68, 68, 0.3);
+  border-radius: 12px;
+  color: #fca5a5;
+  position: relative;
+  z-index: 2;
+}
+
+/* Responsive design */
+@media (max-width: 1200px) {
+  .info-panel {
+    max-width: 280px;
+    font-size: 0.85rem;
+  }
+
+  .controls-panel {
+    gap: 8px;
+  }
+
+  .control-button {
+    padding: 10px 12px;
+    font-size: 0.85rem;
+    min-width: 80px;
+  }
+}
+
 @media (max-width: 768px) {
   .clustered-graph-container {
     padding: 16px;
-    padding-top: 50px;
+    padding-top: 40px;
   }
+
   .canvas-container {
-    height: 500px;
+    height: 600px;
   }
+
   .info-panel {
     position: static;
     margin-bottom: 16px;
     max-width: none;
   }
+
   .controls-panel {
     position: static;
     flex-direction: row;
     justify-content: center;
     margin-bottom: 16px;
+    flex-wrap: wrap;
   }
+
   .breadcrumb {
     position: static;
     transform: none;
     margin-bottom: 16px;
     justify-content: center;
+    max-width: none;
   }
+
   .search-input-wrapper {
     max-width: none;
   }
+
+  .graph-title {
+    font-size: 1.4rem;
+    text-align: center;
+  }
+
+  .minimap-container {
+    bottom: 10px;
+    right: 10px;
+    padding: 8px;
+  }
 }
 
-/* Animations & effects */
-.element {
-  transition: opacity 0.3s ease-in-out;
-}
-.element:hover circle {
-  filter: brightness(1.2);
-  stroke-width: 4;
-}
-.element:hover .element-label {
-  font-weight: bold;
+@media (max-width: 480px) {
+  .canvas-container {
+    height: 500px;
+  }
+
+  .tooltip {
+    max-width: 250px;
+    font-size: 0.8rem;
+    padding: 12px;
+  }
+
+  .search-input {
+    padding: 10px 16px;
+    font-size: 13px;
+  }
+
+  .control-button {
+    padding: 8px 10px;
+    font-size: 0.8rem;
+    min-width: 70px;
+  }
 }
 
+/* Focus and accessibility */
+.control-button:focus,
+.search-input:focus,
+.breadcrumb-item:focus {
+  outline: 2px solid #60a5fa;
+  outline-offset: 2px;
+}
+
+/* Loading pulse animation */
 @keyframes pulse {
   0%,
   100% {
@@ -1548,23 +2195,34 @@ onMounted(async () => {
     opacity: 0.5;
   }
 }
+
 .loading-container {
   animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
 }
 
-.info-panel strong {
-  color: #60a5fa;
+/* Smooth transitions for all interactive elements */
+* {
+  transition:
+    opacity 0.2s ease,
+    transform 0.2s ease;
 }
-.element circle {
-  transition: all 0.2s ease-in-out;
+
+/* Custom scrollbar for search results */
+.search-results::-webkit-scrollbar {
+  width: 6px;
 }
-.element.focused circle {
-  stroke: #fbbf24;
-  stroke-width: 4;
-  filter: drop-shadow(0 0 8px rgba(251, 191, 36, 0.5));
+
+.search-results::-webkit-scrollbar-track {
+  background: rgba(75, 85, 99, 0.2);
+  border-radius: 3px;
 }
-.element.focused .element-label {
-  fill: #fbbf24;
-  font-weight: bold;
+
+.search-results::-webkit-scrollbar-thumb {
+  background: rgba(59, 130, 246, 0.5);
+  border-radius: 3px;
+}
+
+.search-results::-webkit-scrollbar-thumb:hover {
+  background: rgba(59, 130, 246, 0.7);
 }
 </style>
