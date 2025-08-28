@@ -1,2228 +1,487 @@
 <template>
-  <div class="clustered-graph-container">
-    <h1 class="graph-title">Hierarchical Anime/Manga Relations Graph</h1>
-
-    <!-- Search Bar -->
-    <div class="search-container">
-      <div class="search-input-wrapper">
-        <input
-          v-model="searchTerm"
-          @input="handleSearch"
-          type="text"
-          placeholder="Search anime/manga titles..."
-          class="search-input"
-        />
-        <div v-if="searchResults.length > 0 && searchTerm" class="search-results">
-          <div
-            v-for="result in searchResults.slice(0, 10)"
-            :key="result.id"
-            @click="focusOnNode(result)"
-            class="search-result-item"
-          >
-            <div class="search-result-title">
-              {{ result.label || result.name || `${result.type} ${result.id}` }}
-            </div>
-            <div class="search-result-subtitle">
-              {{ result.clusterName || 'Standalone' }} •
-              {{ result.connectionCount || 0 }} connections
-            </div>
-          </div>
-        </div>
-      </div>
+  <div
+    class="max-w-[1400px] mx-auto p-8 bg-gradient-to-br from-slate-800 to-slate-950 min-h-screen text-white"
+  >
+    <!-- Header -->
+    <div class="text-center mb-12">
+      <h1
+        class="text-5xl font-extrabold mb-4 bg-gradient-to-r from-indigo-500 to-violet-500 bg-clip-text text-transparent"
+      >
+        📊 Database Statistics
+      </h1>
+      <p class="text-xl text-slate-400">Comprehensive analysis of our anime and manga collection</p>
     </div>
 
     <!-- Loading State -->
-    <div v-if="loading" class="loading-container">
-      <div class="loading-spinner"></div>
-      <div>Clustering relations...</div>
-      <div class="loading-subtitle">
-        Found {{ totalClusters }} clusters from {{ totalNodes }} nodes
-      </div>
-      <div v-if="progressText" class="loading-subtitle">{{ progressText }}</div>
-    </div>
-
-    <!-- Error State -->
-    <div v-else-if="error" class="error-container" style="color: red; padding: 20px">
-      Error: {{ error }}
-    </div>
-
-    <!-- Main Graph -->
-    <div v-else class="graph-wrapper">
-      <!-- Main SVG Container -->
-      <div class="canvas-container">
-        <div class="starfield-background"></div>
-        <svg
-          ref="svgRef"
-          class="graph-svg"
-          :viewBox="`0 0 ${svgDimensions.width} ${svgDimensions.height}`"
-        ></svg>
-
-        <!-- Minimap -->
-        <div class="minimap-container">
-          <svg
-            ref="minimapRef"
-            width="150"
-            height="100"
-            class="minimap-svg"
-            @click="handleMinimapClick"
-          ></svg>
-        </div>
-      </div>
-
-      <!-- Info Panel -->
-      <div class="info-panel">
-        <div><strong>Hierarchical View</strong></div>
-        <div>Level: {{ currentViewLevel }}</div>
-        <div>Zoom: {{ zoomLevel.toFixed(1) }}x</div>
-        <div>Visible: {{ visibleElementsCount }} elements</div>
-        <div>Total Clusters: {{ totalClusters }}</div>
-        <div class="legend">
-          <div>
-            <span class="legend-icon series-cluster"></span> Series Clusters &nbsp;
-            <span class="legend-icon mega-cluster"></span> Mega Clusters
-          </div>
-          <div>
-            <span class="legend-icon anime-node"></span> Anime &nbsp;
-            <span class="legend-icon manga-node"></span> Manga &nbsp;
-            <span class="legend-icon other-node"></span> Standalone
-          </div>
-        </div>
-        <div class="instructions">
-          <div>Wheel: zoom, Drag: pan</div>
-          <div>Double-click clusters to dive in</div>
-        </div>
-      </div>
-
-      <!-- Controls -->
-      <div class="controls-panel">
-        <button @click="zoomIn" class="control-button">Zoom In</button>
-        <button @click="zoomOut" class="control-button">Zoom Out</button>
-        <button @click="resetView" class="control-button">Reset</button>
-        <button @click="goToOverview" class="control-button">Overview</button>
-        <button v-if="currentCluster" @click="goBack" class="control-button back-button">
-          ← Back
-        </button>
-      </div>
-
-      <!-- Breadcrumb -->
-      <div v-if="breadcrumb.length > 0" class="breadcrumb">
-        <span
-          v-for="(crumb, index) in breadcrumb"
-          :key="index"
-          @click="navigateToBreadcrumb(index)"
-          class="breadcrumb-item"
-        >
-          {{ crumb.name }}
-          <span v-if="index < breadcrumb.length - 1" class="breadcrumb-separator">→</span>
-        </span>
-      </div>
-
-      <!-- Node Info Tooltip -->
+    <div v-if="loading" class="flex flex-col items-center justify-center min-h-[400px]">
       <div
-        v-if="hoveredElement"
-        :style="{ left: tooltipPos.x + 'px', top: tooltipPos.y + 'px' }"
-        class="tooltip"
-      >
-        <div class="tooltip-title">
-          {{
-            hoveredElement.name ||
-            hoveredElement.label ||
-            `${hoveredElement.type} ${hoveredElement.id}`
-          }}
+        class="w-10 h-10 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin mb-4"
+      ></div>
+      <p>Loading statistics...</p>
+    </div>
+
+    <!-- Overview + Charts -->
+    <div v-else class="flex flex-col gap-12">
+      <!-- Overview Cards -->
+      <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-6">
+        <div
+          v-for="(card, index) in overviewCards"
+          :key="index"
+          class="flex items-center gap-6 bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 transition transform hover:-translate-y-2 hover:shadow-2xl hover:border-indigo-500/40"
+        >
+          <div class="text-4xl">{{ card.icon }}</div>
+          <div class="flex-1">
+            <h3 class="text-sm text-slate-400 font-medium mb-1">{{ card.title }}</h3>
+            <div class="text-2xl font-extrabold mb-1">{{ animatedValues[card.key] || 0 }}</div>
+            <p class="text-xs text-slate-500">{{ card.description }}</p>
+          </div>
         </div>
-        <div v-if="hoveredElement.isCluster" class="tooltip-item">
-          Type: {{ hoveredElement.clusterType }} Cluster
+      </div>
+
+      <!-- Charts Grid -->
+      <div class="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-8">
+        <!-- Top Genres -->
+        <div class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6">
+          <h3 class="text-lg font-semibold text-center mb-6">🎭 Top Genres (Combined)</h3>
+          <canvas ref="genresChart"></canvas>
         </div>
-        <div v-if="hoveredElement.isCluster" class="tooltip-item">
-          Contains: {{ hoveredElement.size }} items
+
+        <!-- Anime Types -->
+        <div class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6">
+          <h3 class="text-lg font-semibold text-center mb-6">📺 Anime Types Distribution</h3>
+          <canvas ref="animeTypesChart"></canvas>
         </div>
-        <div v-else class="tooltip-item">Type: {{ hoveredElement.type }}</div>
-        <div v-if="!hoveredElement.isCluster" class="tooltip-item">
-          Connections: {{ hoveredElement.connectionCount || 0 }}
+
+        <!-- Manga Types -->
+        <div class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6">
+          <h3 class="text-lg font-semibold text-center mb-6">📖 Manga Types Distribution</h3>
+          <canvas ref="mangaTypesChart"></canvas>
         </div>
-        <div v-if="hoveredElement.year" class="tooltip-item">Year: {{ hoveredElement.year }}</div>
-        <div v-if="hoveredElement.score" class="tooltip-item">
-          Score: {{ hoveredElement.score }}
+
+        <!-- Score Distribution (full width) -->
+        <div
+          class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 md:col-span-2 xl:col-span-3"
+        >
+          <h3 class="text-lg font-semibold text-center mb-6">
+            📈 Score Distribution Comparison (Logarithmic)
+          </h3>
+          <canvas ref="scoreDistributionChart"></canvas>
+        </div>
+
+        <!-- Anime Years Timeline (full width) -->
+        <div
+          class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6 md:col-span-2 xl:col-span-3"
+        >
+          <h3 class="text-lg font-semibold text-center mb-6">📅 Anime Release Timeline</h3>
+          <canvas ref="animeYearsChart"></canvas>
+        </div>
+
+        <!-- Episode Distribution -->
+        <div class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6">
+          <h3 class="text-lg font-semibold text-center mb-6">⏱️ Episode Distribution</h3>
+          <canvas ref="episodeChart"></canvas>
+        </div>
+
+        <!-- Chapter Distribution -->
+        <div class="bg-white/5 backdrop-blur-lg border border-white/10 rounded-2xl p-6">
+          <h3 class="text-lg font-semibold text-center mb-6">📄 Chapter Distribution</h3>
+          <canvas ref="chapterChart"></canvas>
         </div>
       </div>
     </div>
   </div>
 </template>
 
-<script setup>
-import { ref, onMounted, nextTick, computed } from 'vue'
-import axios from 'axios'
-import * as d3 from 'd3'
+<script>
+import { ref, onMounted, nextTick } from 'vue'
+import Chart from 'chart.js/auto'
 
-/**
- * =========================
- * Reactive state - Fixed to prevent recursive updates
- * =========================
- */
-const loading = ref(true)
-const error = ref(null)
-const progressText = ref('')
-const rawNodes = ref([])
-const rawLinks = ref([])
-const clusters = ref(new Map())
-const visibleElements = ref([])
-const totalNodes = ref(0)
-const totalClusters = ref(0)
-const zoomLevel = ref(1)
-const searchTerm = ref('')
-const searchResults = ref([])
-const hoveredElement = ref(null)
-const tooltipPos = ref({ x: 0, y: 0 })
-const currentCluster = ref(null)
-const currentViewLevel = ref('Overview')
-const breadcrumb = ref([])
+export default {
+  name: 'Stats',
+  setup() {
+    const loading = ref(true)
+    const animatedValues = ref({})
 
-/**
- * =========================
- * Computed properties to prevent reactive mutations
- * =========================
- */
-const svgDimensions = computed(() => ({
-  width: 2400,
-  height: 1600,
-}))
+    // Chart refs
+    const scoreDistributionChart = ref(null)
+    const genresChart = ref(null)
+    const animeTypesChart = ref(null)
+    const mangaTypesChart = ref(null)
+    const animeYearsChart = ref(null)
+    const episodeChart = ref(null)
+    const chapterChart = ref(null)
 
-const visibleElementsCount = computed(() => visibleElements.value.length)
+    // Chart instances
+    const scoreDistributionChartInstance = ref(null)
+    const genresChartInstance = ref(null)
+    const animeTypesChartInstance = ref(null)
+    const mangaTypesChartInstance = ref(null)
+    const animeYearsChartInstance = ref(null)
+    const episodeChartInstance = ref(null)
+    const chapterChartInstance = ref(null)
 
-/**
- * =========================
- * Refs / graph state - Fixed references
- * =========================
- */
-const svgRef = ref(null)
-const minimapRef = ref(null)
+    // Data
+    const animeStats = ref({})
+    const mangaStats = ref({})
+    const overviewStats = ref({})
 
-// Non-reactive D3 variables to prevent recursive updates
-let svg, container, zoom, simulation
-let nodeMap = new Map()
-let latestSeriesClusters = []
+    // Overview cards data
+    const overviewCards = ref([
+      { icon: '📺', title: 'Total Anime', key: 'total_anime', description: 'Anime in database' },
+      { icon: '📖', title: 'Total Manga', key: 'total_manga', description: 'Manga in database' },
+      { icon: '📊', title: 'Combined Total', key: 'total_items', description: 'Total entries' },
+      {
+        icon: '⭐',
+        title: 'Avg Anime Score',
+        key: 'anime_avg_score',
+        description: 'Average rating',
+      },
+      {
+        icon: '⭐',
+        title: 'Avg Manga Score',
+        key: 'manga_avg_score',
+        description: 'Average rating',
+      },
+    ])
 
-/**
- * =========================
- * Constants
- * =========================
- */
-const VIEW_LEVELS = {
-  OVERVIEW: 'Overview',
-  MEGA_CLUSTER: 'Mega Cluster',
-  SERIES_CLUSTER: 'Series Cluster',
-}
-
-const STANDALONE_GROUP_SIZE = 300
-const MEGA_CLUSTER_THRESHOLD = 150
-const MEGA_CLUSTER_SIZE = 12
-const MAX_ITEMS_VISIBLE_IN_CLUSTER = 1500
-
-/**
- * =========================
- * Web Worker (inline)
- * =========================
- */
-function createClusterWorker() {
-  const workerCode = `
-    onmessage = (e) => {
-      const { nodes, links, standaloneGroupSize, megaThreshold, megaSize } = e.data
-
-      // Build adjacency list
-      const adjacency = new Map()
-      nodes.forEach(n => adjacency.set(n.id, new Set()))
-      for (const link of links) {
-        const s = typeof link.source === 'object' ? link.source.id : link.source
-        const t = typeof link.target === 'object' ? link.target.id : link.target
-        if (adjacency.has(s) && adjacency.has(t)) {
-          adjacency.get(s).add(t)
-          adjacency.get(t).add(s)
-        }
-      }
-
-      const visited = new Set()
-      const idToNode = new Map(nodes.map(n => [n.id, n]))
-      const seriesClusters = []
-      const standaloneItems = []
-      const queue = []
-
-      let processed = 0
-      const total = nodes.length
-
-      // Helper function to extract clean series name
-      function extractSeriesName(title) {
-        if (!title) return null
-
-        // Remove common patterns that indicate sequels/seasons/parts
-        let cleanTitle = title
-          .replace(/\\s*(Season|Series|Part|Vol\\.?|Volume|Chapter|Episode|OVA|ONA|Movie|Film)\\s*\\d+.*$/i, '')
-          .replace(/\\s*(II+|2nd|3rd|4th|5th|\\d+st|\\d+nd|\\d+rd|\\d+th).*$/i, '')
-          .replace(/\\s*\\d+.*$/, '')
-          .replace(/\\s*[:：-].*$/, '') // Remove subtitles after colon/dash
-          .replace(/\\s*\\(.*\\).*$/, '') // Remove parenthetical content
-          .replace(/\\s*\\[.*\\].*$/, '') // Remove bracketed content
-          .trim()
-
-        // If we removed everything, use original
-        if (!cleanTitle) cleanTitle = title
-
-        return cleanTitle
-      }
-
-      // Helper to find best representative name for a cluster
-      function getBestClusterName(component) {
-        if (component.length === 0) return 'Unknown'
-        if (component.length === 1) return component[0].label || component[0].name || 'Single Item'
-
-        // Count occurrences of each clean series name
-        const nameCount = new Map()
-        const degreeMap = new Map()
-
-        component.forEach(node => {
-          const degree = adjacency.get(node.id)?.size || 0
-          degreeMap.set(node.id, degree)
-
-          const rawName = node.label || node.name || ''
-          const cleanName = extractSeriesName(rawName)
-          if (cleanName && cleanName.length > 2) { // Ignore very short names
-            nameCount.set(cleanName, (nameCount.get(cleanName) || 0) + 1)
-          }
-        })
-
-        // If we have recurring clean names, use the most common one
-        if (nameCount.size > 0) {
-          const sortedNames = Array.from(nameCount.entries())
-            .sort((a, b) => b[1] - a[1]) // Sort by count descending
-
-          if (sortedNames[0][1] > 1) { // If most common name appears more than once
-            return sortedNames[0][0]
-          }
-        }
-
-        // Fallback: use the name of the most connected node
-        let mostConnected = component[0]
-        let maxDegree = degreeMap.get(mostConnected.id) || 0
-
-        component.forEach(node => {
-          const degree = degreeMap.get(node.id) || 0
-          if (degree > maxDegree) {
-            maxDegree = degree
-            mostConnected = node
-          }
-        })
-
-        const bestName = mostConnected.label || mostConnected.name || 'Unknown'
-        return extractSeriesName(bestName) || bestName
-      }
-
-      // Helper function to check if two titles are related
-      function areTitlesRelated(title1, title2) {
-        if (!title1 || !title2) return false
-
-        // Clean and normalize titles
-        const clean1 = title1.toLowerCase().replace(/[^a-z0-9]/g, '')
-        const clean2 = title2.toLowerCase().replace(/[^a-z0-9]/g, '')
-
-        // Check if one title contains the other
-        if (clean1.includes(clean2) || clean2.includes(clean1)) return true
-
-        // Calculate similarity (you can adjust the threshold)
-        let similarity = 0
-        const shorter = clean1.length < clean2.length ? clean1 : clean2
-        const longer = clean1.length < clean2.length ? clean2 : clean1
-
-        for (let i = 0; i < shorter.length; i++) {
-          if (shorter[i] === longer[i]) similarity++
-        }
-
-        return similarity / longer.length > 0.7
-      }
-
-      // Find connected components using BFS
-      for (const node of nodes) {
-        if (visited.has(node.id)) {
-          processed++;
-          if (processed % 1000 === 0) {
-            postMessage({ type: 'progress', text: 'Clustering components ' + processed + '/' + total })
-          }
-          continue
-        }
-
-        // BFS to find connected component
-        const component = []
-        queue.length = 0
-        queue.push(node.id)
-
-        while (queue.length) {
-          const nodeId = queue.shift()
-          if (visited.has(nodeId)) continue
-
-          visited.add(nodeId)
-          const currentNode = idToNode.get(nodeId)
-          if (!currentNode) continue
-
-          // Only add to component if title is related to existing nodes
-          if (component.length === 0 ||
-              component.some(node => areTitlesRelated(
-                node.label || node.name,
-                currentNode.label || currentNode.name
-              ))) {
-            component.push(currentNode)
-          }
-
-          const neighbors = adjacency.get(nodeId)
-          if (neighbors) {
-            for (const neighborId of neighbors) {
-              if (!visited.has(neighborId)) {
-                const neighborNode = idToNode.get(neighborId)
-                if (neighborNode && areTitlesRelated(
-                  currentNode.label || currentNode.name,
-                  neighborNode.label || neighborNode.name
-                )) {
-                  queue.push(neighborId)
-                }
-              }
-            }
-          }
-        }
-
-        // Categorize the component
-        const componentSize = component.length
-        const totalConnections = component.reduce((sum, n) => sum + (adjacency.get(n.id)?.size || 0), 0)
-
-        if (componentSize === 1 && totalConnections === 0) {
-          // Truly isolated node
-          standaloneItems.push(component[0])
-        } else if (componentSize < 3 && totalConnections < 4) {
-          // Very small weakly connected component - treat as standalone
-          standaloneItems.push(...component)
-        } else {
-          // Create a proper series cluster
-          const clusterName = getBestClusterName(component)
-
-          seriesClusters.push({
-            id: 'series_cluster_' + seriesClusters.length,
-            name: clusterName,
-            itemIds: component.map(x => x.id),
-            size: componentSize,
-            clusterType: 'series',
-            isCluster: true,
-            connectionDensity: totalConnections / (componentSize * (componentSize - 1) || 1)
-          })
-        }
-
-        processed++
-        if (processed % 1000 === 0) {
-          postMessage({ type: 'progress', text: 'Clustering components ' + processed + '/' + total })
-        }
-      }
-
-      // Group standalone items
-      if (standaloneItems.length > 0) {
-        const totalStandaloneItems = standaloneItems.length;
-        const standaloneClusterName = "Big Chungus";
-        seriesClusters.push({
-          id: 'bigChungus',
-          name: standaloneClusterName,
-          itemIds: standaloneItems.map((item) => item.id),
-          size: totalStandaloneItems,
-          clusterType: 'mega',
-          isCluster: true,
-          connectionDensity: 0,
-        });
-}
-
-      // Create mega clusters if there are too many series clusters
-      // Filter out standalone clusters before mega-clustering
-      const seriesClustersOnly = seriesClusters.filter(c => c.clusterType !== 'standalone' && c.size <= 10);
-
-      let finalClusters = seriesClusters;
-      if (seriesClustersOnly.length > megaThreshold) {
-        // Sort clusters by size (largest first)
-        seriesClustersOnly.sort((a, b) => b.size - a.size);
-
-        const megaClusters = [];
-        for (let i = 0; i < seriesClustersOnly.length; i += megaSize) {
-          const chunk = seriesClustersOnly.slice(i, i + megaSize);
-          const totalItems = chunk.reduce((sum, c) => sum + c.size, 0);
-          const avgSize = Math.round(totalItems / chunk.length);
-
-          const topClusters = chunk
-            .filter(c => c.size > avgSize * 0.5)
-            .slice(0, 3)
-            .map(c => c.name);
-
-          const megaName = topClusters.length > 0
-            ? topClusters.slice(0, 2).join(' & ') + (topClusters.length > 2 ? ' +' + (chunk.length - 2) : '')
-            : 'Mixed Series Group ' + (Math.floor(i / megaSize) + 1);
-
-          megaClusters.push({
-            id: 'mega_cluster_' + Math.floor(i / megaSize),
-            name: megaName,
-            clusters: chunk.map(c => ({
-              id: c.id,
-              name: c.name,
-              size: c.size,
-              clusterType: c.clusterType,
-              isCluster: true,
-              itemIds: c.itemIds,
-              connectionDensity: c.connectionDensity
-            })),
-            size: totalItems,
-            clusterType: 'mega',
-            isCluster: true,
-            connectionDensity: chunk.reduce((sum, c) => sum + (c.connectionDensity || 0), 0) / chunk.length
-          });
-        }
-
-        // Merge mega clusters with standalone clusters (if you want to show them too)
-        finalClusters = [
-          ...megaClusters,
-          ...seriesClusters.filter(c => c.clusterType === 'standalone' || c.size > 10)
-        ];
-      }
-
-
-      postMessage({
-        type: 'done',
-        clusters: finalClusters,
-        seriesClusters,
-        megaUsed: seriesClusters.length > megaThreshold,
-        stats: {
-          totalComponents: seriesClusters.length,
-          standaloneCount: standaloneItems.length,
-          largestCluster: Math.max(...seriesClusters.map(c => c.size), 0)
-        }
-      })
+    // Chart colors
+    const colors = {
+      primary: '#6366f1',
+      secondary: '#8b5cf6',
+      accent: '#06b6d4',
+      success: '#10b981',
+      warning: '#f59e0b',
+      error: '#ef4444',
+      anime: '#ff6b6b',
+      manga: '#4ecdc4',
     }
-  `
-  const blob = new Blob([workerCode], { type: 'application/javascript' })
-  return new Worker(URL.createObjectURL(blob))
-}
 
-/**
- * =========================
- * Rendering helpers
- * =========================
- */
-const getElementColor = (element) => {
-  if (element.isCluster) {
-    switch (element.clusterType) {
-      case 'series':
-        return '#3B82F6'
-      case 'mega':
-        return '#10B981'
-      case 'standalone':
-        return '#6B7280'
-      default:
-        return '#8B5CF6'
-    }
-  } else {
-    switch (element.type) {
-      case 'anime':
-        return '#3B82F6'
-      case 'manga':
-        return '#EC4899'
-      default:
-        return '#10B981'
-    }
-  }
-}
-
-const getElementStrokeColor = (element) => {
-  if (element.isCluster) {
-    switch (element.clusterType) {
-      case 'series':
-        return '#1E40AF'
-      case 'mega':
-        return '#047857'
-      case 'standalone':
-        return '#374151'
-      default:
-        return '#5B21B6'
-    }
-  } else {
-    switch (element.type) {
-      case 'anime':
-        return '#1E40AF'
-      case 'manga':
-        return '#BE185D'
-      default:
-        return '#047857'
-    }
-  }
-}
-
-/**
- * =========================
- * D3 rendering
- * =========================
- */
-function setupSVG() {
-  const svgEl = svgRef.value
-  if (!svgEl) {
-    console.error('SVG element not found! svgRef.value is:', svgRef.value)
-    console.error('DOM ready state:', document.readyState)
-    return false
-  }
-
-  console.log(`Setting up SVG: ${svgDimensions.value.width}x${svgDimensions.value.height}`)
-  console.log('SVG element:', svgEl)
-
-  svg = d3.select(svgEl)
-  svg.selectAll('*').remove()
-  container = svg.append('g').attr('class', 'main-container')
-
-  // Add gradients and filters
-  const defs = svg.append('defs')
-
-  // Create gradients for different node types
-  const colors = [
-    { name: '3B82F6', light: '#60A5FA', dark: '#1E40AF' },
-    { name: 'EC4899', light: '#F472B6', dark: '#BE185D' },
-    { name: '10B981', light: '#34D399', dark: '#047857' },
-    { name: '8B5CF6', light: '#A78BFA', dark: '#5B21B6' },
-    { name: '6B7280', light: '#9CA3AF', dark: '#374151' },
-  ]
-
-  colors.forEach((color) => {
-    // Radial gradient for nodes
-    const radialGrad = defs
-      .append('radialGradient')
-      .attr('id', `radial-gradient-${color.name}`)
-      .attr('cx', '30%')
-      .attr('cy', '30%')
-      .attr('r', '70%')
-
-    radialGrad
-      .append('stop')
-      .attr('offset', '0%')
-      .attr('stop-color', color.light)
-      .attr('stop-opacity', 1)
-
-    radialGrad
-      .append('stop')
-      .attr('offset', '70%')
-      .attr('stop-color', `#${color.name}`)
-      .attr('stop-opacity', 0.8)
-
-    radialGrad
-      .append('stop')
-      .attr('offset', '100%')
-      .attr('stop-color', color.dark)
-      .attr('stop-opacity', 0.6)
-
-    // Glow gradient
-    const glowGrad = defs
-      .append('radialGradient')
-      .attr('id', `glow-gradient-${color.name}`)
-      .attr('cx', '50%')
-      .attr('cy', '50%')
-      .attr('r', '50%')
-
-    glowGrad
-      .append('stop')
-      .attr('offset', '0%')
-      .attr('stop-color', color.light)
-      .attr('stop-opacity', 0.6)
-
-    glowGrad
-      .append('stop')
-      .attr('offset', '100%')
-      .attr('stop-color', `#${color.name}`)
-      .attr('stop-opacity', 0)
-  })
-
-  // Nebula gradient for mega clusters
-  const nebulaGrad = defs
-    .append('radialGradient')
-    .attr('id', 'nebula-gradient')
-    .attr('cx', '50%')
-    .attr('cy', '50%')
-    .attr('r', '50%')
-
-  nebulaGrad
-    .append('stop')
-    .attr('offset', '0%')
-    .attr('stop-color', '#8B5CF6')
-    .attr('stop-opacity', 0.3)
-
-  nebulaGrad
-    .append('stop')
-    .attr('offset', '50%')
-    .attr('stop-color', '#3B82F6')
-    .attr('stop-opacity', 0.2)
-
-  nebulaGrad
-    .append('stop')
-    .attr('offset', '100%')
-    .attr('stop-color', '#1E1B4B')
-    .attr('stop-opacity', 0)
-
-  // Glow filter
-  const glowFilter = defs
-    .append('filter')
-    .attr('id', 'glow')
-    .attr('x', '-50%')
-    .attr('y', '-50%')
-    .attr('width', '200%')
-    .attr('height', '200%')
-
-  glowFilter.append('feGaussianBlur').attr('stdDeviation', '3').attr('result', 'coloredBlur')
-
-  const feMerge = glowFilter.append('feMerge')
-  feMerge.append('feMergeNode').attr('in', 'coloredBlur')
-  feMerge.append('feMergeNode').attr('in', 'SourceGraphic')
-
-  zoom = d3
-    .zoom()
-    .scaleExtent([0.1, 10])
-    .on('zoom', (event) => {
-      const { transform } = event
-      container.attr('transform', transform)
-      zoomLevel.value = transform.k
-    })
-  svg.call(zoom)
-
-  return true
-}
-
-function addParticleEffect(element, container) {
-  if (!element.isCluster || element.size < 50) return
-
-  const particles = container.append('g').attr('class', 'particles')
-
-  for (let i = 0; i < Math.min(element.size / 10, 15); i++) {
-    const angle = (i / 15) * Math.PI * 2
-    const distance = 30 + Math.random() * 40
-
-    particles
-      .append('circle')
-      .attr('cx', element.x + Math.cos(angle) * distance)
-      .attr('cy', element.y + Math.sin(angle) * distance)
-      .attr('r', 0.5 + Math.random() * 1.5)
-      .attr('fill', '#60a5fa')
-      .attr('opacity', 0.7)
-      .transition()
-      .duration(2000 + Math.random() * 3000)
-      .ease(d3.easeLinear)
-      .attr('transform', `rotate(${360} ${element.x} ${element.y})`)
-      .attr('opacity', 0.2)
-      .on('end', function () {
-        d3.select(this).remove()
-      })
-  }
-}
-
-function renderMinimap() {
-  if (!minimapRef.value || visibleElements.value.length === 0) return
-  const minimap = d3.select(minimapRef.value)
-  minimap.selectAll('*').remove()
-
-  // Add minimap background
-  minimap
-    .append('rect')
-    .attr('width', '100%')
-    .attr('height', '100%')
-    .attr('fill', '#0f0f23')
-    .attr('stroke', '#374151')
-    .attr('stroke-width', 1)
-
-  const scaleX = d3.scaleLinear().domain([0, svgDimensions.value.width]).range([5, 145])
-  const scaleY = d3.scaleLinear().domain([0, svgDimensions.value.height]).range([5, 95])
-  const sampleElements = visibleElements.value.filter((_, i) => i % 3 === 0)
-
-  minimap
-    .selectAll('.mini-element')
-    .data(sampleElements)
-    .enter()
-    .append('circle')
-    .attr('class', 'mini-element')
-    .attr('cx', (d) => scaleX(d.x || svgDimensions.value.width / 2))
-    .attr('cy', (d) => scaleY(d.y || svgDimensions.value.height / 2))
-    .attr('r', (d) => (d.isCluster ? 3 : 1.5))
-    .attr('fill', (d) => getElementColor(d))
-    .attr('opacity', 0.8)
-    .attr('filter', 'url(#glow)')
-}
-
-function renderElements(elements, elementType, links = []) {
-  if (!container || elements.length === 0) return
-
-  container.selectAll('*').remove()
-  if (simulation) {
-    simulation.stop()
-    simulation = null
-  }
-
-  // Create local copies to avoid reactive mutations
-  const elemsCopy = elements.map((d) => ({
-    ...d,
-    x: d.x || svgDimensions.value.width / 2 + (Math.random() - 0.5) * 100,
-    y: d.y || svgDimensions.value.height / 2 + (Math.random() - 0.5) * 100,
-  }))
-
-  // Create node lookup map for link references
-  const nodeById = new Map(elemsCopy.map((node) => [node.id, node]))
-
-  // Process links to ensure they reference actual nodes
-  const processedLinks = links
-    .map((link) => {
-      const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-      const targetId = typeof link.target === 'object' ? link.target.id : link.target
-      const source = nodeById.get(sourceId)
-      const target = nodeById.get(targetId)
-      return source && target ? { source, target } : null
-    })
-    .filter(Boolean)
-
-  // Create simulation with adjusted forces
-  simulation = d3
-    .forceSimulation(elemsCopy)
-    .force('charge', d3.forceManyBody().strength(-200)) // Reduce repulsion strength
-    .force(
-      'center',
-      d3.forceCenter(svgDimensions.value.width / 2, svgDimensions.value.height / 2).strength(0.1),
-    ) // Adjust center strength
-    .force(
-      'collision',
-      d3
-        .forceCollide()
-        .radius((d) => Math.max(25, Math.sqrt(d.size || 1) * 6)) // Adjust collision radius
-        .strength(0.8), // Adjust collision strength
-    )
-    .force(
-      'link',
-      d3
-        .forceLink(processedLinks)
-        .distance(150) // Adjust link distance
-        .strength(0.5), // Adjust link strength
-    )
-
-  // Add link force if we have links
-  if (processedLinks.length > 0) {
-    simulation.force(
-      'link',
-      d3
-        .forceLink(processedLinks)
-        .id((d) => d.id)
-        .distance(80)
-        .strength(0.8),
-    )
-
-    // Create links with energy beam effect
-    container
-      .append('g')
-      .attr('class', 'links')
-      .selectAll('line')
-      .data(processedLinks)
-      .join('line')
-      .attr('class', 'link')
-      .attr('stroke', '#60a5fa')
-      .attr('stroke-width', 1.5)
-      .attr('stroke-opacity', 0.4)
-      .attr('filter', 'url(#glow)')
-  }
-
-  // Create node groups
-  const elementGroups = container
-    .append('g')
-    .attr('class', 'nodes')
-    .selectAll('.element')
-    .data(elemsCopy)
-    .join('g')
-    .attr('class', 'element')
-    .style('cursor', 'pointer')
-    .call(d3.drag().on('start', dragstarted).on('drag', dragged).on('end', dragended))
-    .on('mouseover', handleElementMouseover)
-    .on('mouseout', handleElementMouseout)
-    .on('click', handleElementClick)
-    .on('dblclick', handleElementDoubleClick)
-
-  // Add nebula backgrounds for mega clusters
-  elementGroups
-    .filter((d) => d.clusterType === 'mega')
-    .insert('ellipse', ':first-child')
-    .attr('class', 'nebula-background')
-    .attr('rx', (d) => Math.min(80, Math.max(40, Math.sqrt(d.size || 1) * 8)))
-    .attr('ry', (d) => Math.min(60, Math.max(30, Math.sqrt(d.size || 1) * 6)))
-    .attr('fill', 'url(#nebula-gradient)')
-    .attr('opacity', 0.3)
-
-  // Add outer glow circles
-  elementGroups
-    .append('circle')
-    .attr('class', 'node-glow')
-    .attr('r', (d) => {
-      if (elementType === 'cluster') {
-        const baseRadius = 25
-        const sizeRadius = Math.sqrt(d.size || 1) * 4
-        const maxRadius = 75
-        return Math.min(maxRadius, Math.max(baseRadius, sizeRadius)) + 12
-      } else {
-        return 20
-      }
-    })
-    .attr('fill', (d) => {
-      const color = getElementColor(d).substring(1)
-      return `url(#glow-gradient-${color})`
-    })
-    .attr('opacity', 0.4)
-
-  // Add main node circles
-  elementGroups
-    .append('circle')
-    .attr('class', 'node-core')
-    .attr('r', (d) => {
-      if (elementType === 'cluster') {
-        const baseRadius = 25
-        const sizeRadius = Math.sqrt(d.size || 1) * 4
-        const maxRadius = 75
-        return Math.min(maxRadius, Math.max(baseRadius, sizeRadius))
-      } else {
-        return 15
-      }
-    })
-    .attr('fill', (d) => {
-      const color = getElementColor(d).substring(1)
-      return `url(#radial-gradient-${color})`
-    })
-    .attr('stroke', (d) => getElementStrokeColor(d))
-    .attr('stroke-width', 2)
-    .attr('filter', 'url(#glow)')
-
-  // Add inner sparkle effect for clusters
-  elementGroups
-    .filter((d) => d.isCluster)
-    .append('circle')
-    .attr('class', 'node-sparkle')
-    .attr('r', 3)
-    .attr('fill', '#ffffff')
-    .attr('opacity', 0.8)
-    .attr('cx', -5)
-    .attr('cy', -5)
-
-  // Add labels with better styling
-  elementGroups
-    .append('text')
-    .attr('class', 'element-label')
-    .attr('text-anchor', 'middle')
-    .attr('dy', (d) => {
-      if (elementType === 'cluster') {
-        const baseRadius = 25
-        const sizeRadius = Math.sqrt(d.size || 1) * 4
-        const maxRadius = 75
-        const radius = Math.min(maxRadius, Math.max(baseRadius, sizeRadius))
-        return radius + 20
-      } else {
-        return 15 + 20
-      }
-    })
-    .attr('fill', '#E5E7EB')
-    .attr('font-size', (d) => {
-      if (elementType === 'cluster') {
-        const baseSize = Math.max(11, Math.min(16, Math.log(d.size || 1) * 2 + 9))
-        return baseSize + 'px'
-      } else {
-        return '11px'
-      }
-    })
-    .attr('font-weight', elementType === 'cluster' ? 'bold' : 'normal')
-    .attr('text-shadow', '2px 2px 4px rgba(0,0,0,0.8)')
-    .style('pointer-events', 'none')
-    .text((d) => {
-      const name = d.name || d.label || `${d.type} ${d.id}`
-      const maxLength = elementType === 'cluster' ? (d.size > 100 ? 35 : d.size > 50 ? 30 : 25) : 25
-      return name.length > maxLength ? name.substring(0, maxLength - 3) + '...' : name
-    })
-
-  // Update positions on each tick
-  simulation.on('tick', () => {
-    // Update link positions
-    container
-      .selectAll('.link')
-      .attr('x1', (d) => d.source.x)
-      .attr('y1', (d) => d.source.y)
-      .attr('x2', (d) => d.target.x)
-      .attr('y2', (d) => d.target.y)
-
-    // Update node positions
-    elementGroups.attr('transform', (d) => `translate(${d.x},${d.y})`)
-  })
-
-  // Add particle effects for large clusters
-  setTimeout(() => {
-    elemsCopy
-      .filter((d) => d.isCluster && d.size > 30)
-      .forEach((d) => addParticleEffect(d, container))
-  }, 1000)
-
-  // Heat up the simulation
-  simulation.alpha(1).restart()
-
-  // Update visible elements
-  nextTick(() => {
-    visibleElements.value = elemsCopy
-    setTimeout(() => renderMinimap(), 200)
-  })
-}
-
-/**
- * =========================
- * View transitions
- * =========================
- */
-function renderOverview() {
-  currentCluster.value = null
-  currentViewLevel.value = VIEW_LEVELS.OVERVIEW
-  renderClusters(Array.from(clusters.value.values()))
-}
-
-function renderClusters(clusterArray) {
-  console.log(`Rendering ${clusterArray.length} clusters as star system`)
-
-  // Sort clusters by size
-  const sortedClusters = [...clusterArray].sort((a, b) => b.size - a.size)
-
-  // Separate Big Chungus and other clusters
-  const bigChungus = sortedClusters.find((c) => c.id === 'bigChungus')
-  const otherClusters = sortedClusters.filter((c) => c.id !== 'bigChungus')
-
-  // Calculate dimensions
-  const centerX = svgDimensions.value.width / 2
-  const centerY = svgDimensions.value.height / 2
-  const maxOrbitRadius = Math.min(centerX, centerY) * 0.8
-
-  // Position Big Chungus in the center
-  if (bigChungus) {
-    bigChungus.x = centerX
-    bigChungus.y = centerY
-    bigChungus.fixed = true // Keep it fixed in center
-  }
-
-  // Create orbiting rings based on cluster sizes
-  const orbits = []
-  let currentRadius = 150 // Start with inner orbit
-
-  // Group clusters by size ranges
-  const sizeGroups = {}
-  otherClusters.forEach((cluster) => {
-    const sizeKey = Math.floor(Math.log2(cluster.size))
-    if (!sizeGroups[sizeKey]) sizeGroups[sizeKey] = []
-    sizeGroups[sizeKey].push(cluster)
-  })
-
-  // Create orbits from size groups
-  Object.entries(sizeGroups)
-    .sort((a, b) => Number(b[0]) - Number(a[0])) // Larger clusters in inner orbits
-    .forEach(([sizeKey, clusters]) => {
-      orbits.push({
-        radius: currentRadius,
-        clusters: clusters,
-      })
-      currentRadius += 120 + Math.random() * 50 // Add some randomness to orbit spacing
-    })
-
-  // Position clusters in their orbits
-  orbits.forEach((orbit) => {
-    const clusterCount = orbit.clusters.length
-    orbit.clusters.forEach((cluster, i) => {
-      // Calculate base angle for even distribution
-      const baseAngle = (i / clusterCount) * 2 * Math.PI
-
-      // Add some random offset to make it look more natural
-      const angleOffset = (Math.random() - 0.5) * 0.2
-      const radiusOffset = (Math.random() - 0.5) * 20
-
-      const angle = baseAngle + angleOffset
-      const radius = orbit.radius + radiusOffset
-
-      // Set cluster position
-      cluster.x = centerX + Math.cos(angle) * radius
-      cluster.y = centerY + Math.sin(angle) * radius
-
-      // Store orbital properties for animation
-      cluster.orbitRadius = radius
-      cluster.orbitAngle = angle
-      cluster.orbitSpeed = 0.001 / Math.sqrt(radius) // Slower speed for outer orbits
-    })
-  })
-
-  // Set up force simulation with modified forces
-  if (simulation) simulation.stop()
-
-  simulation = d3
-    .forceSimulation([bigChungus, ...otherClusters])
-    .force(
-      'collision',
-      d3.forceCollide().radius((d) => Math.sqrt(d.size) * 2),
-    )
-    .force('orbit', (alpha) => {
-      otherClusters.forEach((cluster) => {
-        if (!cluster.orbitAngle) return
-
-        // Update orbital position
-        cluster.orbitAngle += cluster.orbitSpeed
-        const targetX = centerX + Math.cos(cluster.orbitAngle) * cluster.orbitRadius
-        const targetY = centerY + Math.sin(cluster.orbitAngle) * cluster.orbitRadius
-
-        cluster.vx = (targetX - cluster.x) * alpha
-        cluster.vy = (targetY - cluster.y) * alpha
-      })
-    })
-    .force('center', d3.forceCenter(centerX, centerY).strength(0.01))
-
-  // Add particle effects for Big Chungus
-  if (bigChungus) {
-    const solarFlareCount = 24
-    for (let i = 0; i < solarFlareCount; i++) {
-      const angle = (i / solarFlareCount) * Math.PI * 2
-      const flareLength = 40 + Math.random() * 30
-
-      container
-        .append('path')
-        .attr('class', 'solar-flare')
-        .attr(
-          'd',
-          `M ${centerX} ${centerY} l ${Math.cos(angle) * flareLength} ${Math.sin(angle) * flareLength}`,
-        )
-        .attr('stroke', '#FDB813')
-        .attr('stroke-width', 2)
-        .attr('opacity', 0.4)
-        .style('filter', 'url(#glow)')
-    }
-  }
-
-  renderElements([bigChungus, ...otherClusters], 'cluster')
-}
-
-function renderClusterDetail(cluster) {
-  console.log('Rendering cluster:', cluster)
-  let items = []
-
-  if (cluster.clusterType === 'mega' && cluster.clusters) {
-    items = cluster.clusters.flatMap((subCluster) => {
-      if (subCluster.itemIds) {
-        return subCluster.itemIds.map((id) => nodeMap.get(id)).filter(Boolean)
-      }
-      return []
-    })
-  } else {
-    if (cluster.items && cluster.items.length > 0) {
-      items = cluster.items.filter((item) => item && item.id)
-    } else if (cluster.itemIds && cluster.itemIds.length > 0) {
-      items = cluster.itemIds.map((id) => nodeMap.get(id)).filter(Boolean)
-    }
-  }
-
-  console.log(`Found ${items.length} items in cluster`)
-
-  const validItemsMap = new Map(items.map((item) => [item.id, item]))
-
-  const relevantLinks = rawLinks.value
-    .filter((link) => {
-      const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-      const targetId = typeof link.target === 'object' ? link.target.id : link.target
-      return validItemsMap.has(sourceId) && validItemsMap.has(targetId)
-    })
-    .map((link) => {
-      const sourceId = typeof link.source === 'object' ? link.source.id : link.source
-      const targetId = typeof link.target === 'object' ? link.target.id : link.target
-      return {
-        source: sourceId,
-        target: targetId,
-      }
-    })
-
-  currentCluster.value = cluster
-  currentViewLevel.value =
-    cluster.clusterType === 'mega' ? VIEW_LEVELS.MEGA_CLUSTER : VIEW_LEVELS.SERIES_CLUSTER
-
-  console.log(`Rendering cluster with ${items.length} nodes and ${relevantLinks.length} links`)
-  renderElements(items, 'node', relevantLinks)
-}
-
-/**
- * =========================
- * Events / interactions
- * =========================
- */
-function handleElementMouseover(event, d) {
-  hoveredElement.value = d
-  tooltipPos.value = { x: event.pageX + 10, y: event.pageY - 10 }
-
-  // Enhanced hover effect
-  d3.select(event.currentTarget)
-    .select('.node-core')
-    .transition()
-    .duration(200)
-    .attr('transform', 'scale(1.15)')
-    .attr('filter', 'url(#glow) brightness(1.3)')
-
-  d3.select(event.currentTarget)
-    .select('.node-glow')
-    .transition()
-    .duration(200)
-    .attr('opacity', 0.8)
-    .attr('transform', 'scale(1.2)')
-}
-
-function handleElementMouseout(event, d) {
-  hoveredElement.value = null
-
-  // Reset hover effect
-  d3.select(event.currentTarget)
-    .select('.node-core')
-    .transition()
-    .duration(200)
-    .attr('transform', 'scale(1)')
-    .attr('filter', 'url(#glow)')
-
-  d3.select(event.currentTarget)
-    .select('.node-glow')
-    .transition()
-    .duration(200)
-    .attr('opacity', 0.4)
-    .attr('transform', 'scale(1)')
-}
-
-function handleElementClick(event, d) {
-  console.log('Element clicked:', d)
-}
-
-function handleElementDoubleClick(event, d) {
-  if (d.isCluster) {
-    if (d.clusterType === 'mega' && d.clusters) {
-      breadcrumb.value.push({
-        name: d.name,
-        cluster: d,
-        level: VIEW_LEVELS.MEGA_CLUSTER,
-      })
-    } else {
-      breadcrumb.value.push({
-        name: d.name,
-        cluster: d,
-        level: currentViewLevel.value,
-      })
-    }
-    renderClusterDetail(d)
-    resetView()
-  }
-}
-
-function dragstarted(event, d) {
-  if (!event.active && simulation) simulation.alphaTarget(0.3).restart()
-  d.fx = d.x
-  d.fy = d.y
-}
-
-function dragged(event, d) {
-  d.fx = event.x
-  d.fy = event.y
-}
-
-function dragended(event, d) {
-  if (!event.active && simulation) simulation.alphaTarget(0)
-  d.fx = null
-  d.fy = null
-}
-
-/**
- * =========================
- * Navigation
- * =========================
- */
-function goBack() {
-  if (breadcrumb.value.length > 0) {
-    breadcrumb.value.pop()
-    if (breadcrumb.value.length === 0) {
-      renderOverview()
-    } else {
-      const previous = breadcrumb.value[breadcrumb.value.length - 1]
-      renderClusterDetail(previous.cluster)
-    }
-    resetView()
-  }
-}
-
-function goToOverview() {
-  breadcrumb.value = []
-  renderOverview()
-  resetView()
-}
-
-function navigateToBreadcrumb(index) {
-  breadcrumb.value = breadcrumb.value.slice(0, index + 1)
-  if (index === -1 || breadcrumb.value.length === 0) {
-    goToOverview()
-  } else {
-    const target = breadcrumb.value[index]
-    renderClusterDetail(target.cluster)
-  }
-  resetView()
-}
-
-/**
- * =========================
- * Search
- * =========================
- */
-function handleSearch() {
-  if (!searchTerm.value.trim()) {
-    searchResults.value = []
-    return
-  }
-  const query = searchTerm.value.toLowerCase()
-  searchResults.value = Array.from(nodeMap.values())
-    .filter((node) => (node.label || node.name || '').toLowerCase().includes(query))
-    .sort((a, b) => {
-      const aLabel = (a.label || a.name || '').toLowerCase()
-      const bLabel = (b.label || b.name || '').toLowerCase()
-      const aExact = aLabel === query,
-        bExact = bLabel === query
-      if (aExact !== bExact) return bExact - aExact
-      const aStarts = aLabel.startsWith(query),
-        bStarts = bLabel.startsWith(query)
-      if (aStarts !== bStarts) return bStarts - aStarts
-      return (b.connectionCount || 0) - (a.connectionCount || 0)
-    })
-    .slice(0, 20)
-}
-
-function focusOnNode(node) {
-  searchTerm.value = ''
-  searchResults.value = []
-
-  const targetCluster = latestSeriesClusters.find((c) => (c.itemIds || []).includes(node.id))
-  if (targetCluster) {
-    breadcrumb.value = []
-    renderClusterDetail(targetCluster)
-    setTimeout(() => {
-      const foundNode = visibleElements.value.find((el) => el.id === node.id)
-      if (foundNode && typeof foundNode.x === 'number' && typeof foundNode.y === 'number') {
-        const centerX = svgDimensions.value.width / 2 - foundNode.x
-        const centerY = svgDimensions.value.height / 2 - foundNode.y
-        svg
-          .transition()
-          .duration(750)
-          .call(zoom.transform, d3.zoomIdentity.translate(centerX, centerY).scale(2))
-      }
-    }, 800)
-  }
-}
-
-/**
- * =========================
- * Zoom controls
- * =========================
- */
-function zoomIn() {
-  if (!svg || !zoom) return
-  svg.transition().duration(300).call(zoom.scaleBy, 1.5)
-}
-
-function zoomOut() {
-  if (!svg || !zoom) return
-  svg
-    .transition()
-    .duration(300)
-    .call(zoom.scaleBy, 1 / 1.5)
-}
-
-function resetView() {
-  if (!svg || !zoom) return
-  svg.transition().duration(500).call(zoom.transform, d3.zoomIdentity)
-}
-
-function handleMinimapClick(event) {
-  if (!minimapRef.value) return
-  const rect = minimapRef.value.getBoundingClientRect()
-  const clickX = event.clientX - rect.left
-  const clickY = event.clientY - rect.top
-  const worldX = ((clickX - 5) / 140) * svgDimensions.value.width
-  const worldY = ((clickY - 5) / 90) * svgDimensions.value.height
-  const centerX = svgDimensions.value.width / 2 - worldX
-  const centerY = svgDimensions.value.height / 2 - worldY
-  svg
-    .transition()
-    .duration(500)
-    .call(zoom.transform, d3.zoomIdentity.translate(centerX, centerY).scale(zoomLevel.value))
-}
-
-/**
- * =========================
- * Initialization
- * =========================
- */
-async function initializeVisualization(clusterPayload) {
-  console.log('Initializing hierarchical visualization...')
-  console.log('Clusters received:', clusterPayload.clusters.length)
-
-  await nextTick()
-  await nextTick()
-
-  let retries = 0
-  while (!svgRef.value && retries < 10) {
-    console.log(`Waiting for SVG ref... attempt ${retries + 1}`)
-    await new Promise((resolve) => setTimeout(resolve, 100))
-    retries++
-  }
-
-  if (!svgRef.value) {
-    console.error('SVG ref still not available after waiting!')
-    error.value = 'SVG element not available'
-    return
-  }
-
-  if (!setupSVG()) {
-    error.value = 'Failed to setup SVG'
-    return
-  }
-
-  const clusterMap = new Map()
-  clusterPayload.clusters.forEach((c) => {
-    clusterMap.set(c.id, { ...c })
-  })
-
-  clusters.value = clusterMap
-  totalClusters.value = clusterMap.size
-  latestSeriesClusters = clusterPayload.seriesClusters
-
-  const idToClusterName = new Map()
-  clusterPayload.seriesClusters.forEach((c) => {
-    c.itemIds.forEach((id) => idToClusterName.set(id, c.name))
-  })
-  nodeMap.forEach((n, id) => {
-    n.clusterName = idToClusterName.get(id) || 'Standalone'
-  })
-
-  await nextTick()
-  renderOverview()
-  console.log('Hierarchical visualization initialized')
-}
-
-/**
- * =========================
- * Lifecycle
- * =========================
- */
-onMounted(async () => {
-  try {
-    console.log('Fetching graph data...')
-    const res = await axios.get('http://127.0.0.1:8000/graph')
-
-    const nodes = res.data.nodes || []
-    const links = Array.isArray(res.data.links)
-      ? res.data.links
-      : Object.values(res.data.links || {})
-
-    rawNodes.value = nodes
-    rawLinks.value = links
-    totalNodes.value = nodes.length
-
-    console.log(`Loaded ${nodes.length} nodes and ${links.length} links`)
-
-    const degreeMap = new Map()
-    links.forEach((link) => {
-      const s = typeof link.source === 'object' ? link.source.id : link.source
-      const t = typeof link.target === 'object' ? link.target.id : link.target
-      degreeMap.set(s, (degreeMap.get(s) || 0) + 1)
-      degreeMap.set(t, (degreeMap.get(t) || 0) + 1)
-    })
-
-    nodes.forEach((node) => {
-      if (!node.label && !node.name) node.label = `${node.type || 'Item'} ${node.id}`
-      if (!node.type) {
-        node.type = Math.random() > 0.6 ? 'anime' : Math.random() > 0.5 ? 'manga' : 'other'
-      }
-      node.connectionCount = degreeMap.get(node.id) || 0
-      nodeMap.set(node.id, node)
-    })
-
-    const worker = createClusterWorker()
-    worker.onmessage = async (msg) => {
-      const { type } = msg.data || {}
-      if (type === 'progress') {
-        progressText.value = msg.data.text
-      } else if (type === 'done') {
-        progressText.value = ''
+    const chartColors = [
+      '#FF6384',
+      '#36A2EB',
+      '#FFCE56',
+      '#4BC0C0',
+      '#9966FF',
+      '#FF9F40',
+      '#FF6384',
+      '#C9CBCF',
+      '#4BC0C0',
+      '#FF6384',
+    ]
+
+    // Fetch API data
+    const fetchStats = async () => {
+      try {
+        const [animeRes, mangaRes, overviewRes] = await Promise.all([
+          fetch('http://127.0.0.1:8000/stats/anime'),
+          fetch('http://127.0.0.1:8000/stats/manga'),
+          fetch('http://127.0.0.1:8000/stats/overview'),
+        ])
+
+        animeStats.value = await animeRes.json()
+        mangaStats.value = await mangaRes.json()
+        overviewStats.value = await overviewRes.json()
+
+        animateNumbers()
+
+        // Show charts
         loading.value = false
 
-        await nextTick()
+        // Wait until <canvas> elements exist
         await nextTick()
 
-        try {
-          await initializeVisualization(msg.data)
-        } catch (err) {
-          console.error('Initialization error:', err)
-          error.value = 'Failed to initialize visualization'
-        }
-
-        worker.terminate()
+        // Create all charts
+        createCharts()
+      } catch (error) {
+        console.error('Failed to fetch stats:', error)
+        loading.value = false
       }
     }
 
-    worker.onerror = (err) => {
-      console.error('Worker error:', err)
-      error.value = 'Clustering failed'
-      loading.value = false
+    // Number animation
+    const animateNumbers = () => {
+      overviewCards.value.forEach((card) => {
+        const target = overviewStats.value[card.key] || 0
+        animateValue(card.key, 0, target, 2000, target % 1 !== 0)
+      })
     }
 
-    const cleanNodes = JSON.parse(JSON.stringify(nodes))
-    const cleanLinks = JSON.parse(JSON.stringify(links))
+    const animateValue = (key, start, end, duration, isDecimal = false) => {
+      const startTime = performance.now()
+      const range = end - start
+      const animate = (now) => {
+        const elapsed = now - startTime
+        const progress = Math.min(elapsed / duration, 1)
+        const easeOut = 1 - Math.pow(1 - progress, 4)
+        const value = start + range * easeOut
+        animatedValues.value[key] = isDecimal
+          ? value.toFixed(2)
+          : Math.floor(value).toLocaleString()
+        if (progress < 1) requestAnimationFrame(animate)
+      }
+      requestAnimationFrame(animate)
+    }
 
-    worker.postMessage({
-      nodes: cleanNodes,
-      links: cleanLinks,
-      standaloneGroupSize: STANDALONE_GROUP_SIZE,
-      megaThreshold: MEGA_CLUSTER_THRESHOLD,
-      megaSize: MEGA_CLUSTER_SIZE,
-    })
-  } catch (err) {
-    console.error('Error:', err)
-    error.value = 'Failed to load graph data: ' + (err.message || err)
-    loading.value = false
-  }
-})
+    // Create charts
+    const createCharts = () => {
+      createScoreDistributionChart()
+      createGenresChart()
+      createAnimeTypesChart()
+      createMangaTypesChart()
+      createAnimeYearsChart()
+      createEpisodeChart()
+      createChapterChart()
+    }
+
+    // Helper to destroy previous chart instance
+    const destroyChart = (chartRef) => {
+      if (chartRef?.value) chartRef.value.destroy()
+    }
+
+    const createScoreDistributionChart = () => {
+      if (scoreDistributionChartInstance.value) scoreDistributionChartInstance.value.destroy()
+
+      const ctx = scoreDistributionChart.value.getContext('2d')
+      const labels = Object.keys(animeStats.value.score_distribution || {})
+      const animeData = Object.values(animeStats.value.score_distribution || {})
+      const mangaData = Object.values(mangaStats.value.score_distribution || {})
+
+      scoreDistributionChartInstance.value = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels,
+          datasets: [
+            {
+              label: 'Anime',
+              data: animeData,
+              backgroundColor: colors.anime + '80',
+              borderColor: colors.anime,
+              borderWidth: 2,
+            },
+            {
+              label: 'Manga',
+              data: mangaData,
+              backgroundColor: colors.manga + '80',
+              borderColor: colors.manga,
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: {
+            legend: { position: 'top' },
+            tooltip: {
+              enabled: true,
+              callbacks: {
+                label: function (context) {
+                  return `${context.dataset.label}: ${context.raw.toLocaleString()}`
+                },
+              },
+            },
+          },
+          scales: {
+            y: {
+              type: 'logarithmic', // makes small bars visible
+              beginAtZero: false, // cannot be zero for log scale
+              grid: { color: '#374151' },
+              ticks: {
+                callback: function (value) {
+                  return Number(value.toString()) // shows nice integer numbers
+                },
+              },
+            },
+            x: { grid: { color: '#374151' } },
+          },
+          animation: { duration: 2000, easing: 'easeOutQuart' },
+        },
+      })
+    }
+
+    const createGenresChart = () => {
+      if (genresChartInstance.value) genresChartInstance.value.destroy()
+      const ctx = genresChart.value.getContext('2d')
+      const data = overviewStats.value.top_genres_combined || {}
+      genresChartInstance.value = new Chart(ctx, {
+        type: 'doughnut',
+        data: {
+          labels: Object.keys(data),
+          datasets: [
+            {
+              data: Object.values(data).map((g) => g.total),
+              backgroundColor: chartColors,
+              borderWidth: 3,
+              borderColor: '#1f2937',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          animation: { animateRotate: true, animateScale: true, duration: 2000 },
+        },
+      })
+    }
+
+    const createAnimeTypesChart = () => {
+      if (animeTypesChartInstance.value) animeTypesChartInstance.value.destroy()
+      const ctx = animeTypesChart.value.getContext('2d')
+      const data = animeStats.value.type_distribution || {}
+      animeTypesChartInstance.value = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(data),
+          datasets: [
+            {
+              data: Object.values(data),
+              backgroundColor: chartColors,
+              borderWidth: 2,
+              borderColor: '#1f2937',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          animation: { animateRotate: true, duration: 1500 },
+        },
+      })
+    }
+
+    const createMangaTypesChart = () => {
+      if (mangaTypesChartInstance.value) mangaTypesChartInstance.value.destroy()
+      const ctx = mangaTypesChart.value.getContext('2d')
+      const data = mangaStats.value.type_distribution || {}
+      mangaTypesChartInstance.value = new Chart(ctx, {
+        type: 'pie',
+        data: {
+          labels: Object.keys(data),
+          datasets: [
+            {
+              data: Object.values(data),
+              backgroundColor: chartColors,
+              borderWidth: 2,
+              borderColor: '#1f2937',
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          plugins: { legend: { position: 'bottom' } },
+          animation: { animateRotate: true, duration: 1500 },
+        },
+      })
+    }
+
+    const createAnimeYearsChart = () => {
+      if (animeYearsChartInstance.value) animeYearsChartInstance.value.destroy()
+      const ctx = animeYearsChart.value.getContext('2d')
+      const yearsData = animeStats.value.year_distribution || {}
+
+      // Sort years ascending
+      const sortedYears = Object.keys(yearsData).sort((a, b) => a - b)
+      const counts = sortedYears.map((y) => yearsData[y])
+
+      animeYearsChartInstance.value = new Chart(ctx, {
+        type: 'line',
+        data: {
+          labels: sortedYears,
+          datasets: [
+            {
+              label: 'Anime Released',
+              data: counts,
+              borderColor: colors.primary,
+              backgroundColor: colors.primary + '20',
+              fill: true,
+              tension: 0.4,
+              pointRadius: 4,
+              pointHoverRadius: 8,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#374151' } },
+            x: { grid: { color: '#374151' } },
+          },
+          animation: { duration: 2500, easing: 'easeOutCubic' },
+        },
+      })
+    }
+
+    const createEpisodeChart = () => {
+      if (episodeChartInstance.value) episodeChartInstance.value.destroy()
+      const ctx = episodeChart.value.getContext('2d')
+      const data = animeStats.value.episode_distribution || {}
+      episodeChartInstance.value = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(data),
+          datasets: [
+            {
+              label: 'Anime Count',
+              data: Object.values(data),
+              backgroundColor: colors.accent + '80',
+              borderColor: colors.accent,
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#374151' } },
+            x: { grid: { color: '#374151' } },
+          },
+          animation: { delay: (ctx) => ctx.dataIndex * 200, duration: 1000 },
+        },
+      })
+    }
+
+    const createChapterChart = () => {
+      if (chapterChartInstance.value) chapterChartInstance.value.destroy()
+      const ctx = chapterChart.value.getContext('2d')
+      const data = mangaStats.value.chapter_distribution || {}
+      chapterChartInstance.value = new Chart(ctx, {
+        type: 'bar',
+        data: {
+          labels: Object.keys(data),
+          datasets: [
+            {
+              label: 'Manga Count',
+              data: Object.values(data),
+              backgroundColor: colors.success + '80',
+              borderColor: colors.success,
+              borderWidth: 2,
+            },
+          ],
+        },
+        options: {
+          responsive: true,
+          scales: {
+            y: { beginAtZero: true, grid: { color: '#374151' } },
+            x: { grid: { color: '#374151' } },
+          },
+          animation: { delay: (ctx) => ctx.dataIndex * 200, duration: 1000 },
+        },
+      })
+    }
+
+    onMounted(fetchStats)
+
+    return {
+      loading,
+      animatedValues,
+      overviewCards,
+      scoreDistributionChart,
+      genresChart,
+      animeTypesChart,
+      mangaTypesChart,
+      animeYearsChart,
+      episodeChart,
+      chapterChart,
+    }
+  },
+}
 </script>
-
-<style scoped>
-/* Main container */
-.clustered-graph-container {
-  padding: 24px;
-  padding-top: 60px;
-  background: radial-gradient(ellipse at center, #0f172a 0%, #020617 70%, #000000 100%);
-  min-height: 100vh;
-  color: white;
-  max-width: 100%;
-  margin: 0 auto;
-  position: relative;
-  overflow: hidden;
-}
-
-.clustered-graph-container::before {
-  content: '';
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image:
-    radial-gradient(2px 2px at 20px 30px, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(2px 2px at 40px 70px, rgba(255, 255, 255, 0.7), transparent),
-    radial-gradient(1px 1px at 90px 40px, rgba(255, 255, 255, 1), transparent),
-    radial-gradient(1px 1px at 130px 80px, rgba(255, 255, 255, 0.6), transparent),
-    radial-gradient(2px 2px at 160px 30px, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(1px 1px at 200px 120px, rgba(255, 255, 255, 0.4), transparent),
-    radial-gradient(2px 2px at 300px 60px, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1px 1px at 350px 180px, rgba(255, 255, 255, 0.7), transparent);
-  background-repeat: repeat;
-  background-size: 400px 200px;
-  animation: twinkle 6s ease-in-out infinite alternate;
-  pointer-events: none;
-  z-index: 0;
-}
-
-@keyframes twinkle {
-  0% {
-    opacity: 0.3;
-    transform: translateX(0px) translateY(0px);
-  }
-  25% {
-    opacity: 0.8;
-  }
-  50% {
-    opacity: 0.5;
-    transform: translateX(2px) translateY(-1px);
-  }
-  75% {
-    opacity: 0.9;
-  }
-  100% {
-    opacity: 0.4;
-    transform: translateX(-1px) translateY(1px);
-  }
-}
-
-.graph-title {
-  font-size: 1.8rem;
-  font-weight: bold;
-  margin-bottom: 20px;
-  position: relative;
-  z-index: 2;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.8);
-  background: linear-gradient(45deg, #60a5fa, #a78bfa, #60a5fa);
-  background-size: 200% 200%;
-  -webkit-background-clip: text;
-  -webkit-text-fill-color: transparent;
-  animation: gradient-shift 3s ease-in-out infinite;
-}
-
-@keyframes gradient-shift {
-  0%,
-  100% {
-    background-position: 0% 50%;
-  }
-  50% {
-    background-position: 100% 50%;
-  }
-}
-
-/* Search container */
-.search-container {
-  margin-bottom: 20px;
-  display: flex;
-  gap: 16px;
-  align-items: center;
-  position: relative;
-  z-index: 2;
-}
-
-.search-input-wrapper {
-  position: relative;
-  flex: 1;
-  max-width: 500px;
-}
-
-.search-input {
-  width: 100%;
-  padding: 12px 20px;
-  background: rgba(15, 23, 42, 0.8);
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  border-radius: 12px;
-  color: white;
-  outline: none;
-  transition: all 0.3s ease;
-  font-size: 14px;
-  backdrop-filter: blur(10px);
-}
-
-.search-input::placeholder {
-  color: rgba(156, 163, 175, 0.8);
-}
-
-.search-input:focus {
-  border-color: #3b82f6;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-  background: rgba(15, 23, 42, 0.95);
-}
-
-.search-results {
-  position: absolute;
-  top: 100%;
-  left: 0;
-  right: 0;
-  background: rgba(15, 23, 42, 0.95);
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  border-top: none;
-  border-radius: 0 0 12px 12px;
-  max-height: 250px;
-  overflow-y: auto;
-  z-index: 10;
-  backdrop-filter: blur(15px);
-}
-
-.search-result-item {
-  padding: 12px 20px;
-  cursor: pointer;
-  border-bottom: 1px solid rgba(75, 85, 99, 0.3);
-  transition: all 0.2s ease;
-}
-
-.search-result-item:last-child {
-  border-bottom: none;
-}
-
-.search-result-item:hover {
-  background: rgba(59, 130, 246, 0.1);
-  transform: translateX(4px);
-}
-
-.search-result-title {
-  font-weight: 600;
-  margin-bottom: 3px;
-  color: #e5e7eb;
-}
-
-.search-result-subtitle {
-  font-size: 0.85rem;
-  color: rgba(156, 163, 175, 0.8);
-}
-
-/* Loading */
-.loading-container {
-  text-align: center;
-  padding: 60px 40px;
-  position: relative;
-  z-index: 2;
-}
-
-.loading-spinner {
-  width: 50px;
-  height: 50px;
-  margin: 0 auto 20px;
-  border: 4px solid rgba(59, 130, 246, 0.2);
-  border-top: 4px solid #3b82f6;
-  border-radius: 50%;
-  animation: spin 1s linear infinite;
-}
-
-@keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
-    transform: rotate(360deg);
-  }
-}
-
-.loading-subtitle {
-  font-size: 0.9rem;
-  opacity: 0.8;
-  margin-top: 10px;
-}
-
-/* Graph wrapper */
-.graph-wrapper {
-  position: relative;
-  z-index: 2;
-}
-
-.canvas-container {
-  position: relative;
-  background: radial-gradient(
-    ellipse at center,
-    rgba(26, 26, 46, 0.8) 0%,
-    rgba(22, 33, 62, 0.9) 50%,
-    rgba(15, 15, 35, 0.95) 100%
-  );
-  border-radius: 16px;
-  overflow: hidden;
-  height: 750px;
-  border: 2px solid rgba(59, 130, 246, 0.2);
-  backdrop-filter: blur(20px);
-  box-shadow:
-    0 0 50px rgba(59, 130, 246, 0.1),
-    inset 0 0 100px rgba(59, 130, 246, 0.05);
-}
-
-.starfield-background {
-  position: absolute;
-  top: 0;
-  left: 0;
-  width: 100%;
-  height: 100%;
-  background-image:
-    radial-gradient(2px 2px at 30px 50px, rgba(255, 255, 255, 0.8), transparent),
-    radial-gradient(1px 1px at 80px 120px, rgba(96, 165, 250, 0.6), transparent),
-    radial-gradient(1px 1px at 150px 40px, rgba(167, 139, 250, 0.5), transparent),
-    radial-gradient(2px 2px at 200px 180px, rgba(255, 255, 255, 0.9), transparent),
-    radial-gradient(1px 1px at 280px 90px, rgba(52, 211, 153, 0.4), transparent),
-    radial-gradient(2px 2px at 350px 160px, rgba(236, 72, 153, 0.3), transparent);
-  background-repeat: repeat;
-  background-size: 400px 300px;
-  animation:
-    drift 20s linear infinite,
-    sparkle 4s ease-in-out infinite alternate;
-  pointer-events: none;
-}
-
-@keyframes drift {
-  0% {
-    transform: translateX(0px) translateY(0px);
-  }
-  100% {
-    transform: translateX(-400px) translateY(-300px);
-  }
-}
-
-@keyframes sparkle {
-  0% {
-    opacity: 0.4;
-  }
-  100% {
-    opacity: 0.8;
-  }
-}
-
-.graph-svg {
-  width: 100%;
-  height: 100%;
-  cursor: grab;
-  position: relative;
-  z-index: 3;
-}
-
-.graph-svg:active {
-  cursor: grabbing;
-}
-
-/* Enhanced node effects */
-.node-core {
-  transition: all 0.3s ease;
-}
-
-.node-glow {
-  transition: all 0.3s ease;
-}
-
-.element:hover .node-core {
-  filter: brightness(1.4) drop-shadow(0 0 15px currentColor);
-}
-
-.element:hover .node-glow {
-  opacity: 0.8 !important;
-}
-
-.element:hover .element-label {
-  fill: #ffffff;
-  font-weight: bold;
-  filter: drop-shadow(0 0 6px rgba(255, 255, 255, 0.8));
-}
-
-/* Animated links */
-.link {
-  transition: all 0.3s ease;
-  stroke-dasharray: 4, 6;
-  animation: energy-flow 3s linear infinite;
-}
-
-@keyframes energy-flow {
-  0% {
-    stroke-dashoffset: 0;
-    stroke-opacity: 0.4;
-  }
-  50% {
-    stroke-opacity: 0.7;
-  }
-  100% {
-    stroke-dashoffset: 10;
-    stroke-opacity: 0.4;
-  }
-}
-
-.link:hover {
-  stroke: #60a5fa;
-  stroke-width: 3;
-  filter: drop-shadow(0 0 8px #60a5fa);
-  stroke-opacity: 0.9 !important;
-}
-
-/* Particle effects */
-.particles circle {
-  animation: orbit 4s linear infinite;
-}
-
-@keyframes orbit {
-  from {
-    transform: rotate(0deg);
-  }
-  to {
-    transform: rotate(360deg);
-  }
-}
-
-/* Nebula background effect */
-.nebula-background {
-  animation: nebula-pulse 6s ease-in-out infinite alternate;
-}
-
-@keyframes nebula-pulse {
-  0% {
-    opacity: 0.2;
-    transform: scale(0.95);
-  }
-  100% {
-    opacity: 0.4;
-    transform: scale(1.05);
-  }
-}
-
-/* Node sparkle effect */
-.node-sparkle {
-  animation: sparkle-twinkle 2s ease-in-out infinite alternate;
-}
-
-@keyframes sparkle-twinkle {
-  0% {
-    opacity: 0.6;
-    transform: scale(0.8);
-  }
-  100% {
-    opacity: 1;
-    transform: scale(1.2);
-  }
-}
-
-/* Minimap */
-.minimap-container {
-  position: absolute;
-  bottom: 20px;
-  right: 20px;
-  background: rgba(0, 0, 0, 0.85);
-  padding: 12px;
-  border-radius: 12px;
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  backdrop-filter: blur(15px);
-  box-shadow: 0 0 25px rgba(0, 0, 0, 0.5);
-}
-
-.minimap-svg {
-  cursor: pointer;
-  border: 1px solid rgba(75, 85, 99, 0.5);
-  border-radius: 6px;
-  background: rgba(15, 15, 35, 0.8);
-}
-
-/* Info panel */
-.info-panel {
-  position: absolute;
-  top: 20px;
-  left: 20px;
-  background: rgba(0, 0, 0, 0.9);
-  padding: 16px;
-  border-radius: 12px;
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  font-size: 0.9rem;
-  max-width: 320px;
-  backdrop-filter: blur(15px);
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-}
-
-.info-panel > div {
-  margin: 4px 0;
-}
-
-.info-panel strong {
-  color: #60a5fa;
-  font-size: 1.1rem;
-}
-
-.legend {
-  margin-top: 12px;
-  font-size: 0.8rem;
-  opacity: 0.9;
-  border-top: 1px solid rgba(75, 85, 99, 0.3);
-  padding-top: 8px;
-}
-
-.legend > div {
-  margin: 4px 0;
-  display: flex;
-  align-items: center;
-}
-
-.legend-icon {
-  display: inline-block;
-  width: 12px;
-  height: 12px;
-  border-radius: 50%;
-  margin-right: 6px;
-}
-
-.legend-icon.series-cluster {
-  background: #3b82f6;
-}
-
-.legend-icon.mega-cluster {
-  background: #10b981;
-}
-
-.legend-icon.anime-node {
-  background: #3b82f6;
-}
-
-.legend-icon.manga-node {
-  background: #ec4899;
-}
-
-.legend-icon.other-node {
-  background: #6b7280;
-}
-
-.instructions {
-  font-size: 0.75rem;
-  opacity: 0.8;
-  margin-top: 8px;
-  border-top: 1px solid rgba(75, 85, 99, 0.3);
-  padding-top: 6px;
-}
-
-.instructions > div {
-  margin: 2px 0;
-}
-
-/* Controls */
-.controls-panel {
-  position: absolute;
-  top: 20px;
-  right: 20px;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.control-button {
-  background: rgba(0, 0, 0, 0.85);
-  color: white;
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  padding: 12px 16px;
-  border-radius: 8px;
-  font-size: 0.9rem;
-  cursor: pointer;
-  transition: all 0.3s ease;
-  backdrop-filter: blur(15px);
-  min-width: 100px;
-}
-
-.control-button:hover {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: #60a5fa;
-  box-shadow: 0 0 20px rgba(59, 130, 246, 0.3);
-  transform: translateY(-2px);
-}
-
-.back-button {
-  background: rgba(59, 130, 246, 0.2);
-  border-color: #3b82f6;
-  color: #60a5fa;
-}
-
-.back-button:hover {
-  background: rgba(59, 130, 246, 0.4);
-  color: white;
-  box-shadow: 0 0 25px rgba(59, 130, 246, 0.5);
-}
-
-/* Breadcrumb */
-.breadcrumb {
-  position: absolute;
-  top: 20px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: rgba(0, 0, 0, 0.9);
-  padding: 12px 20px;
-  border-radius: 12px;
-  border: 2px solid rgba(59, 130, 246, 0.3);
-  font-size: 0.9rem;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  backdrop-filter: blur(15px);
-  max-width: 600px;
-  overflow-x: auto;
-  box-shadow: 0 0 30px rgba(0, 0, 0, 0.5);
-}
-
-.breadcrumb-item {
-  cursor: pointer;
-  color: #60a5fa;
-  white-space: nowrap;
-  transition: all 0.2s ease;
-  padding: 4px 8px;
-  border-radius: 6px;
-}
-
-.breadcrumb-item:hover {
-  color: #3b82f6;
-  background: rgba(59, 130, 246, 0.1);
-  transform: scale(1.05);
-}
-
-.breadcrumb-separator {
-  color: rgba(156, 163, 175, 0.6);
-  margin: 0 4px;
-  font-weight: bold;
-}
-
-/* Tooltip */
-.tooltip {
-  position: absolute;
-  background: rgba(0, 0, 0, 0.95);
-  padding: 16px;
-  border-radius: 12px;
-  border: 2px solid rgba(59, 130, 246, 0.4);
-  font-size: 0.9rem;
-  max-width: 320px;
-  z-index: 50;
-  pointer-events: none;
-  backdrop-filter: blur(20px);
-  box-shadow:
-    0 10px 25px rgba(0, 0, 0, 0.5),
-    0 0 30px rgba(59, 130, 246, 0.2);
-}
-
-.tooltip-title {
-  font-weight: bold;
-  margin-bottom: 8px;
-  color: #f9fafb;
-  border-bottom: 1px solid rgba(75, 85, 99, 0.4);
-  padding-bottom: 6px;
-  font-size: 1rem;
-}
-
-.tooltip-item {
-  color: #d1d5db;
-  margin: 4px 0;
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-}
-
-/* Enhanced element labels */
-.element-label {
-  font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
-  text-shadow: 2px 2px 4px rgba(0, 0, 0, 0.9);
-  transition: all 0.3s ease;
-}
-
-/* Error container */
-.error-container {
-  text-align: center;
-  padding: 40px;
-  background: rgba(239, 68, 68, 0.1);
-  border: 2px solid rgba(239, 68, 68, 0.3);
-  border-radius: 12px;
-  color: #fca5a5;
-  position: relative;
-  z-index: 2;
-}
-
-/* Responsive design */
-@media (max-width: 1200px) {
-  .info-panel {
-    max-width: 280px;
-    font-size: 0.85rem;
-  }
-
-  .controls-panel {
-    gap: 8px;
-  }
-
-  .control-button {
-    padding: 10px 12px;
-    font-size: 0.85rem;
-    min-width: 80px;
-  }
-}
-
-@media (max-width: 768px) {
-  .clustered-graph-container {
-    padding: 16px;
-    padding-top: 40px;
-  }
-
-  .canvas-container {
-    height: 600px;
-  }
-
-  .info-panel {
-    position: static;
-    margin-bottom: 16px;
-    max-width: none;
-  }
-
-  .controls-panel {
-    position: static;
-    flex-direction: row;
-    justify-content: center;
-    margin-bottom: 16px;
-    flex-wrap: wrap;
-  }
-
-  .breadcrumb {
-    position: static;
-    transform: none;
-    margin-bottom: 16px;
-    justify-content: center;
-    max-width: none;
-  }
-
-  .search-input-wrapper {
-    max-width: none;
-  }
-
-  .graph-title {
-    font-size: 1.4rem;
-    text-align: center;
-  }
-
-  .minimap-container {
-    bottom: 10px;
-    right: 10px;
-    padding: 8px;
-  }
-}
-
-@media (max-width: 480px) {
-  .canvas-container {
-    height: 500px;
-  }
-
-  .tooltip {
-    max-width: 250px;
-    font-size: 0.8rem;
-    padding: 12px;
-  }
-
-  .search-input {
-    padding: 10px 16px;
-    font-size: 13px;
-  }
-
-  .control-button {
-    padding: 8px 10px;
-    font-size: 0.8rem;
-    min-width: 70px;
-  }
-}
-
-/* Focus and accessibility */
-.control-button:focus,
-.search-input:focus,
-.breadcrumb-item:focus {
-  outline: 2px solid #60a5fa;
-  outline-offset: 2px;
-}
-
-/* Loading pulse animation */
-@keyframes pulse {
-  0%,
-  100% {
-    opacity: 1;
-  }
-  50% {
-    opacity: 0.5;
-  }
-}
-
-.loading-container {
-  animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
-}
-
-/* Smooth transitions for all interactive elements */
-* {
-  transition:
-    opacity 0.2s ease,
-    transform 0.2s ease;
-}
-
-/* Custom scrollbar for search results */
-.search-results::-webkit-scrollbar {
-  width: 6px;
-}
-
-.search-results::-webkit-scrollbar-track {
-  background: rgba(75, 85, 99, 0.2);
-  border-radius: 3px;
-}
-
-.search-results::-webkit-scrollbar-thumb {
-  background: rgba(59, 130, 246, 0.5);
-  border-radius: 3px;
-}
-
-.search-results::-webkit-scrollbar-thumb:hover {
-  background: rgba(59, 130, 246, 0.7);
-}
-</style>

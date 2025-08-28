@@ -861,7 +861,310 @@ async def get_manga_image(manga_id: int):
         "thumbnail_url": thumbnail_url
     })
 
-# Add these imports at the top of your existing file
+
+
+def build_graph():
+    nodes = {}
+    links = []
+
+    # Helper to add a node if it doesn't exist
+    def add_node(mal_id, name, ntype, url=None):
+        key = f"{ntype}_{mal_id}"
+        if key not in nodes:
+            nodes[key] = {
+                "id": key,
+                "mal_id": int(mal_id),
+                "label": name,
+                "type": ntype,
+                "url": url
+            }
+
+    # Parse both anime + manga CSVs
+    for df, ntype in [(anime_df, "anime"), (manga_df, "manga")]:
+        for _, row in df.iterrows():
+            mal_id = row["mal_id"]
+            title = row.get("title", "")
+            url = row.get("url", "")
+            add_node(mal_id, title, ntype, url)
+
+            if "relations" in row and pd.notna(row["relations"]):
+                try:
+                    rels = json.loads(row["relations"].replace("'", '"'))
+                    for rel in rels:
+                        relation_type = rel.get("relation", "")
+                        for entry in rel.get("entry", []):
+                            target_id = entry["mal_id"]
+                            target_type = entry.get("type", "").lower()
+                            target_name = entry.get("name", "")
+                            target_url = entry.get("url", "")
+
+                            # add the target node (anime or manga)
+                            add_node(target_id, target_name, target_type, target_url)
+
+                            # create link
+                            links.append({
+                                "source": f"{ntype}_{mal_id}",
+                                "target": f"{target_type}_{target_id}",
+                                "relation": relation_type
+                            })
+                except Exception as e:
+                    # malformed JSON
+                    continue
+
+    return {"nodes": list(nodes.values()), "links": links}
+
+
+@app.get("/graph")
+async def get_graph():
+    graph = build_graph()
+    return JSONResponse(content=graph)
+
+
+
+@app.get("/stats/anime")
+def get_anime_stats():
+    """Get comprehensive anime statistics"""
+    df = anime_df.copy()
+    
+    # Basic counts
+    total_anime = len(df)
+    completed_anime = len(df[df['status'].str.contains('Finished', case=False, na=False)])
+    
+    # Score distribution
+    bins = list(range(0, 11))  # [0,1,2,...,10]
+    labels = [f"{i}-{i+1}" for i in range(0, 10)]
+    score_ranges = pd.cut(df['score'], bins=bins, labels=labels, include_lowest=True, right=True).value_counts().sort_index()
+
+    score_ranges = {str(k): int(v) for k, v in score_ranges.items()}
+
+    
+    # Year distribution
+    year_counts = {}
+    for year_val in df['year'].dropna():
+        try:
+            year = int(float(year_val))
+            if 1900 <= year <= 2025:
+                year_counts[year] = year_counts.get(year, 0) + 1
+        except:
+            pass
+    
+    # Top genres
+    genre_counts = {}
+    for genres_field in df['genres'].dropna():
+        genres_list = parse_array_field(genres_field)
+        for genre_item in genres_list:
+            if isinstance(genre_item, dict) and 'name' in genre_item:
+                genre_name = genre_item['name']
+                if genre_name:
+                    genre_counts[genre_name] = genre_counts.get(genre_name, 0) + 1
+    
+    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    # Type distribution
+    type_counts = df['type'].value_counts().to_dict()
+    
+    # Season distribution
+    season_counts = df['season'].value_counts().to_dict()
+    
+    # Episode distribution
+    episode_ranges = {
+        '1 Episode': len(df[df['episodes'] == 1]),
+        '2-12 Episodes': len(df[(df['episodes'] >= 2) & (df['episodes'] <= 12)]),
+        '13-26 Episodes': len(df[(df['episodes'] >= 13) & (df['episodes'] <= 26)]),
+        '27-52 Episodes': len(df[(df['episodes'] >= 27) & (df['episodes'] <= 52)]),
+        '53+ Episodes': len(df[df['episodes'] > 52])
+    }
+    
+    return {
+        "total_anime": total_anime,
+        "completed_anime": completed_anime,
+        "score_distribution": score_ranges,
+        "year_distribution": dict(sorted(year_counts.items())),
+        "top_genres": dict(top_genres),
+        "type_distribution": type_counts,
+        "season_distribution": season_counts,
+        "episode_distribution": episode_ranges,
+        "average_score": float(df['score'].mean()) if not df['score'].isna().all() else 0
+    }
+
+@app.get("/stats/manga")
+def get_manga_stats():
+    """Get comprehensive manga statistics"""
+    df = manga_df.copy()
+    
+    # Basic counts
+    total_manga = len(df)
+    completed_manga = len(df[df['status'].str.contains('Finished', case=False, na=False)])
+    
+    # Score distribution
+    bins = list(range(0, 11))  # [0,1,2,...,10]
+    labels = [f"{i}-{i+1}" for i in range(0, 10)]
+    score_ranges = pd.cut(df['score'], bins=bins, labels=labels, include_lowest=True, right=True).value_counts().sort_index()
+
+    score_ranges = {str(k): int(v) for k, v in score_ranges.items()}
+
+    # Top genres
+    genre_counts = {}
+    for genres_field in df['genres'].dropna():
+        genres_list = safe_json_parse(genres_field)
+        for genre in genres_list:
+            if isinstance(genre, dict) and genre.get('name'):
+                genre_name = genre['name']
+                genre_counts[genre_name] = genre_counts.get(genre_name, 0) + 1
+    
+    top_genres = sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:10]
+    
+    # Type distribution
+    type_counts = df['type'].value_counts().to_dict()
+    
+    # Chapter distribution
+    chapter_ranges = {
+        '1-50': len(df[(df['chapters'] >= 1) & (df['chapters'] <= 50)]),
+        '51-100': len(df[(df['chapters'] >= 51) & (df['chapters'] <= 100)]),
+        '101-200': len(df[(df['chapters'] >= 101) & (df['chapters'] <= 200)]),
+        '201-500': len(df[(df['chapters'] >= 201) & (df['chapters'] <= 500)]),
+        '500+': len(df[df['chapters'] > 500])
+    }
+    
+    # Volume distribution
+    volume_ranges = {
+        '1-10': len(df[(df['volumes'] >= 1) & (df['volumes'] <= 10)]),
+        '11-25': len(df[(df['volumes'] >= 11) & (df['volumes'] <= 25)]),
+        '26-50': len(df[(df['volumes'] >= 26) & (df['volumes'] <= 50)]),
+        '51+': len(df[df['volumes'] > 50])
+    }
+    
+    return {
+        "total_manga": total_manga,
+        "completed_manga": completed_manga,
+        "score_distribution": score_ranges,
+        "top_genres": dict(top_genres),
+        "type_distribution": type_counts,
+        "chapter_distribution": chapter_ranges,
+        "volume_distribution": volume_ranges,
+        "average_score": float(df['score'].mean()) if not df['score'].isna().all() else 0
+    }
+
+@app.get("/stats/manga/top")
+def get_manga_top_stats():
+    """
+    Return top manga statistics:
+    - Top authors
+    - Top publishers/serializations
+    - Top genres
+    - Top themes
+    - Top types
+    - Most favorited manga
+    """
+    df = manga_df.copy()
+
+    # Top authors
+    author_counts = {}
+    for authors_field in df['authors'].dropna():
+        authors_list = safe_json_parse(authors_field)
+        for author in authors_list:
+            name = author.get('name')
+            if name:
+                author_counts[name] = author_counts.get(name, 0) + 1
+    top_authors = dict(sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:10])
+
+    # Top publishers / serializations
+    publisher_counts = {}
+    for pubs_field in df['serializations'].dropna():
+        pubs_list = safe_json_parse(pubs_field)
+        for pub in pubs_list:
+            name = pub.get('name')
+            if name:
+                publisher_counts[name] = publisher_counts.get(name, 0) + 1
+    top_publishers = dict(sorted(publisher_counts.items(), key=lambda x: x[1], reverse=True)[:10])
+
+    # Top genres
+    genre_counts = {}
+    for genres_field in df['genres'].dropna():
+        genres_list = safe_json_parse(genres_field)
+        for genre in genres_list:
+            name = genre.get('name')
+            if name:
+                genre_counts[name] = genre_counts.get(name, 0) + 1
+    top_genres = dict(sorted(genre_counts.items(), key=lambda x: x[1], reverse=True)[:10])
+
+    # Top themes
+    theme_counts = {}
+    for themes_field in df['themes'].dropna():
+        themes_list = safe_json_parse(themes_field)
+        for theme in themes_list:
+            name = theme.get('name')
+            if name:
+                theme_counts[name] = theme_counts.get(name, 0) + 1
+    top_themes = dict(sorted(theme_counts.items(), key=lambda x: x[1], reverse=True)[:10])
+
+    # Top types
+    type_counts = df['type'].value_counts().to_dict()
+
+    # Most favorited manga
+    favorited = df[['title', 'favorites']].dropna().sort_values('favorites', ascending=False).head(10)
+    top_favorited = [{ 'title': row['title'], 'favorites': int(row['favorites']) } for _, row in favorited.iterrows()]
+
+    return {
+        "top_authors": top_authors,
+        "top_publishers": top_publishers,
+        "top_genres": top_genres,
+        "top_themes": top_themes,
+        "top_types": type_counts,
+        "top_favorited": top_favorited
+    }
+
+
+@app.get("/stats/overview")
+def get_overview_stats():
+    """Get overview statistics for both anime and manga"""
+    anime_count = len(anime_df)
+    manga_count = len(manga_df)
+    
+    # Combined genre analysis
+    all_genres = {}
+    
+    # Anime genres
+    for genres_field in anime_df['genres'].dropna():
+        genres_list = parse_array_field(genres_field)
+        for genre_item in genres_list:
+            if isinstance(genre_item, dict) and 'name' in genre_item:
+                genre_name = genre_item['name']
+                if genre_name:
+                    all_genres[genre_name] = all_genres.get(genre_name, {'anime': 0, 'manga': 0})
+                    all_genres[genre_name]['anime'] += 1
+    
+    # Manga genres
+    for genres_field in manga_df['genres'].dropna():
+        genres_list = safe_json_parse(genres_field)
+        for genre in genres_list:
+            if isinstance(genre, dict) and genre.get('name'):
+                genre_name = genre['name']
+                all_genres[genre_name] = all_genres.get(genre_name, {'anime': 0, 'manga': 0})
+                all_genres[genre_name]['manga'] += 1
+    
+    # Get top 10 genres across both
+    top_combined_genres = {}
+    for genre, counts in all_genres.items():
+        total = counts['anime'] + counts['manga']
+        top_combined_genres[genre] = {
+            'total': total,
+            'anime': counts['anime'],
+            'manga': counts['manga']
+        }
+    
+    top_10_genres = dict(sorted(top_combined_genres.items(), 
+                               key=lambda x: x[1]['total'], reverse=True)[:10])
+    
+    return {
+        "total_anime": anime_count,
+        "total_manga": manga_count,
+        "total_items": anime_count + manga_count,
+        "top_genres_combined": top_10_genres,
+        "anime_avg_score": float(anime_df['score'].mean()) if not anime_df['score'].isna().all() else 0,
+        "manga_avg_score": float(manga_df['score'].mean()) if not manga_df['score'].isna().all() else 0
+    }
+
 import pickle
 import gzip
 import os
@@ -1003,8 +1306,8 @@ def load_recommender():
                         # Apply min_score filter
                         if min_score is not None:
                             results_df = results_df[
-                                (results_df['score'] >= min_score) | 
-                                results_df['score'].isna()
+                                (results_df['score'] >= min_score) &
+                                results_df['score'].notna()
                             ]
                         
                         # Remove sequels if requested
@@ -1047,6 +1350,8 @@ def load_recommender():
                             if not np.isfinite(similarity_val):
                                 similarity_val = 0.0
                             
+                            synopsis = row.get('synopsis', '')
+                            synopsis = str(synopsis) if pd.notna(synopsis) else ''
                             rec_item = {
                                 'mal_id': int(row['mal_id']),
                                 'title': row['title'],
@@ -1056,7 +1361,7 @@ def load_recommender():
                                 'type': row.get('type', ''),
                                 'episodes': int(row['episodes']) if pd.notna(row['episodes']) else None,
                                 'year': int(row['year']) if pd.notna(row['year']) else None,
-                                'synopsis': row.get('synopsis', '')[:200] + "..." if row.get('synopsis') and len(row.get('synopsis', '')) > 200 else row.get('synopsis', '')
+                                'synopsis': synopsis[:200] + "..." if synopsis and len(synopsis) > 200 else synopsis
                             }
                             
                             # Add explanation if requested

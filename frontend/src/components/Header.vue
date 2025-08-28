@@ -92,7 +92,7 @@ const links = [
   { name: 'Home', to: '/home' },
   { name: 'Anime', to: '/anime' },
   { name: 'Manga', to: '/manga' },
-  { name: 'Browse', to: '/browse' },
+  { name: 'Topology', to: '/topology' },
   { name: 'Stats', to: '/stats' },
   { name: 'Recommend', to: '/recommend' },
 ]
