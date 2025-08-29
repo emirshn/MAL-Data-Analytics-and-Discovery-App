@@ -1,6 +1,6 @@
 <template>
   <div class="space-y-8">
-    <!-- Related Anime -->
+    <!-- Related Anime/Manga -->
     <div v-if="anime.relations && anime.relations.length" class="bg-gray-800 rounded-xl p-6">
       <h3 class="text-xl font-semibold mb-6 text-pink-400 flex items-center">
         <svg class="w-6 h-6 mr-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -22,8 +22,11 @@
             class="flex-shrink-0 w-32 group cursor-pointer"
             @click="$emit('entryClick', entry)"
           >
-            <div class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors">
-              <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+            <!-- Fixed height card with flex layout -->
+            <div
+              class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full flex flex-col"
+            >
+              <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative flex-shrink-0">
                 <img
                   :src="relationImages[entry.mal_id] || getPlaceholderImage(entry)"
                   :alt="entry.name"
@@ -39,14 +42,15 @@
                   </span>
                 </div>
               </div>
-              <div class="p-2">
+              <!-- Fixed height content area -->
+              <div class="p-2 flex-1 flex flex-col justify-between min-h-[60px]">
                 <h5
-                  class="text-xs font-medium text-white line-clamp-2 group-hover:text-pink-300 transition-colors leading-tight mb-1"
+                  class="text-xs font-medium text-white line-clamp-2 group-hover:text-pink-300 transition-colors leading-tight mb-1 flex-1"
                 >
                   {{ entry.name }}
                 </h5>
-                <span class="text-xs text-pink-300 capitalize">
-                  {{ getRelationForEntry(entry.mal_id) }}
+                <span class="text-xs text-pink-300 capitalize flex-shrink-0">
+                  {{ relation.relation }}
                 </span>
               </div>
             </div>
@@ -80,40 +84,34 @@
             class="flex-shrink-0 w-40 group cursor-pointer"
             @click="$emit('entryClick', recommendation)"
           >
+            <!-- Fixed height card -->
             <div
-              class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full"
+              class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full flex flex-col"
             >
-              <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative">
+              <div class="aspect-[3/4] bg-gray-700 overflow-hidden relative flex-shrink-0">
                 <img
                   :src="getRecommendationImageUrl(recommendation.entry)"
                   :alt="recommendation.entry.title"
                   class="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
                 />
                 <div class="absolute top-2 right-2">
-                  <span class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded"
-                    >ANIME</span
-                  >
-                </div>
-                <div class="absolute bottom-2 left-2">
                   <span
-                    class="px-2 py-1 bg-amber-600 bg-opacity-90 text-white text-xs rounded flex items-center"
+                    class="px-2 py-1 bg-black bg-opacity-70 text-white text-xs rounded uppercase"
                   >
-                    <svg class="w-3 h-3 mr-1" fill="currentColor" viewBox="0 0 20 20">
-                      <path
-                        d="M9.049 2.927c.3-.921 1.603-.921 1.902 0l1.07 3.292a1 1 0 00.95.69h3.462c.969 0 1.371 1.24.588 1.81l-2.8 2.034a1 1 0 00-.364 1.118l1.07 3.292c.3.921-.755 1.688-1.54 1.118l-2.8-2.034a1 1 0 00-1.175 0l-2.8 2.034c-.784.57-1.838-.197-1.539-1.118l1.07-3.292a1 1 0 00-.364-1.118L2.98 8.72c-.783-.57-.38-1.81.588-1.81h3.461a1 1 0 00.951-.69l1.07-3.292z"
-                      />
-                    </svg>
-                    {{ recommendation.votes }}
+                    {{ getRecommendationType(recommendation.entry) }}
                   </span>
                 </div>
               </div>
-              <div class="p-3">
+              <!-- Fixed height content area -->
+              <div class="p-3 flex-1 flex flex-col justify-between min-h-[70px]">
                 <h5
-                  class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-1"
+                  class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-1 flex-1"
                 >
                   {{ recommendation.entry.title }}
                 </h5>
-                <span class="text-xs text-amber-300">{{ recommendation.votes }} votes</span>
+                <span class="text-xs text-amber-300 flex-shrink-0"
+                  >{{ recommendation.votes }} votes</span
+                >
               </div>
             </div>
           </div>
@@ -122,7 +120,6 @@
     </div>
   </div>
 </template>
-
 <script setup>
 defineProps({
   anime: { type: Object, required: true },
@@ -145,7 +142,22 @@ function getRecommendationImageUrl(entry) {
   return entry.images?.jpg?.image_url || getPlaceholderImage(entry)
 }
 
-function getRelationForEntry(malId) {
-  return ''
+function getRecommendationType(entry) {
+  // Check the URL to determine if it's anime or manga
+  if (entry.url) {
+    if (entry.url.includes('/manga/')) {
+      return 'MANGA'
+    } else if (entry.url.includes('/anime/')) {
+      return 'ANIME'
+    }
+  }
+
+  // Fallback to entry type if available
+  if (entry.type) {
+    return entry.type.toUpperCase()
+  }
+
+  // Default fallback
+  return 'ANIME'
 }
 </script>

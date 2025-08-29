@@ -134,6 +134,40 @@ export default {
       },
     ])
 
+    const calculateMissingValues = (data) => {
+      const calculatedValues = {}
+
+      if (data.popularity?.top_scored?.length > 0) {
+        const highestAnimeScore = Math.max(
+          ...data.popularity.top_scored.map((item) => item.score || 0),
+        )
+        calculatedValues.highest_anime_score = highestAnimeScore
+      } else {
+        calculatedValues.highest_anime_score = 0
+      }
+
+      if (data.popularity?.top_manga_scored?.length > 0) {
+        const highestMangaScore = Math.max(
+          ...data.popularity.top_manga_scored.map((item) => item.score || 0),
+        )
+        calculatedValues.highest_manga_score = highestMangaScore
+      } else {
+        calculatedValues.highest_manga_score = 0
+      }
+
+      if (data.timing?.year_distribution && Object.keys(data.timing.year_distribution).length > 0) {
+        const years = Object.keys(data.timing.year_distribution)
+          .map((year) => parseInt(year))
+          .filter((year) => !isNaN(year))
+        calculatedValues.oldest_anime_year =
+          years.length > 0 ? Math.min(...years) : new Date().getFullYear()
+      } else {
+        calculatedValues.oldest_anime_year = new Date().getFullYear()
+      }
+
+      return calculatedValues
+    }
+
     // Fetch comprehensive stats
     const fetchStats = async () => {
       try {
@@ -143,11 +177,15 @@ export default {
         stats.value = data
         console.log('Comprehensive stats loaded:', data)
 
+        // Calculate missing values
+        const calculatedValues = calculateMissingValues(data)
+
         // Prepare overview data for animation
         const overviewData = {
           ...data.overview,
           anime_completion_rate: data.overview.completion_rates.anime,
           manga_completion_rate: data.overview.completion_rates.manga,
+          ...calculatedValues, // Add calculated values
         }
 
         // Animate numbers
@@ -155,7 +193,6 @@ export default {
 
         loading.value = false
         await nextTick()
-        createAllCharts()
       } catch (error) {
         console.error('Failed to fetch comprehensive stats:', error)
         loading.value = false
@@ -206,7 +243,6 @@ export default {
       stats,
       animatedValues,
       overviewCards,
-
       cleanup,
     }
   },
@@ -216,7 +252,6 @@ export default {
   },
 }
 </script>
-
 <style scoped>
 /* Custom scrollbar for top lists */
 .max-h-96::-webkit-scrollbar {

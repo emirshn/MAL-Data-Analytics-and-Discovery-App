@@ -1316,6 +1316,10 @@ def get_comprehensive_stats():
     # RETURN COMPREHENSIVE DATA
     # =============================================================================
     
+    top_manga_scored = manga_df.nlargest(20, 'score')[['title', 'score', 'members', 'favorites']].to_dict('records')
+    top_manga_favorites = manga_df.nlargest(20, 'favorites')[['title', 'favorites', 'score']].to_dict('records')
+    top_manga_members = manga_df.nlargest(20, 'members')[['title', 'members', 'score']].to_dict('records')
+
     return {
         # Basic Overview
         "overview": {
@@ -1379,6 +1383,9 @@ def get_comprehensive_stats():
             "top_favorites": top_favorites,
             "top_members": top_members,
             "top_scored": top_scored,
+            "top_manga_scored": top_manga_scored,
+            "top_manga_favorites": top_manga_favorites, 
+            "top_manga_members": top_manga_members,
             "correlations": {
                 "popularity_score": popularity_score_data,
                 "rank_score": rank_score_data,
