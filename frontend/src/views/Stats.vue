@@ -114,12 +114,30 @@ export default {
         key: 'manga_completion_rate',
         description: 'Completion %',
       },
+      {
+        icon: '🎯',
+        title: 'Highest Anime Score',
+        key: 'highest_anime_score',
+        description: 'Top-rated anime',
+      },
+      {
+        icon: '🎯',
+        title: 'Highest Manga Score',
+        key: 'highest_manga_score',
+        description: 'Top-rated manga',
+      },
+      {
+        icon: '📅',
+        title: 'Oldest Anime',
+        key: 'oldest_anime_year',
+        description: 'First anime year',
+      },
     ])
 
     // Fetch comprehensive stats
     const fetchStats = async () => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/stats/comprehensive')
+        const response = await fetch('http://127.0.0.1:8000/stats/')
         const data = await response.json()
 
         stats.value = data
