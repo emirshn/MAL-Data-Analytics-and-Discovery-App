@@ -1,6 +1,7 @@
 <template>
   <header
     class="fixed top-0 left-0 w-full bg-white/20 group hover:bg-white/90 backdrop-blur-md transition-colors duration-300 shadow-md z-50 h-16"
+    :class="{ 'pointer-events-none': !headerLock.unlocked }"
   >
     <div class="max-w-7xl mx-auto h-full flex items-center justify-between px-4 md:px-8">
       <!-- Logo + Text -->
@@ -22,7 +23,7 @@
           class="px-3 py-2 rounded-md font-medium transition-colors duration-300"
           :class="[
             $route.path === link.to
-              ? 'text-blue-600'
+              ? 'text-purple-600'
               : 'text-white group-hover:text-gray-900 hover:text-blue-600',
           ]"
         >
@@ -31,7 +32,7 @@
       </nav>
 
       <!-- Profile (Desktop only) -->
-      <router-link to="/home" class="hidden md:flex items-center space-x-2">
+      <router-link to="/profile" class="hidden md:flex items-center space-x-2">
         <img src="/profile.jpg" alt="Profile" class="h-10 w-auto rounded-full" />
         <span
           class="text-white group-hover:text-gray-900 font-bold text-lg transition-colors duration-300"
@@ -85,6 +86,9 @@
 
 <script setup>
 import { ref } from 'vue'
+import { headerLock } from '@/stores/headerLock.js'
+
+const headerUnlocked = headerLock.unlocked
 
 const mobileMenuOpen = ref(false)
 

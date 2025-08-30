@@ -7,10 +7,12 @@ import Recommend from '../views/Recommend.vue'
 import AnimeDetail from '../views/AnimeDetail.vue'
 import MangaDetail from '../views/MangaDetail.vue'
 import Topology from '@/views/Topology.vue'
+import Profile from '@/views/Profile.vue'
 
 const routes = [
   { path: '/', redirect: '/home' },
   { path: '/home', name: 'Home', component: Home },
+  { path: '/profile', name: 'Profile', component: Profile },
   { path: '/anime', name: 'Anime', component: Anime },
   { path: '/anime/:id', name: 'AnimeDetail', component: AnimeDetail, props: true },
   { path: '/manga', name: 'Manga', component: Manga },
