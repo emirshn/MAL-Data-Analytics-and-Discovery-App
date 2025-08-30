@@ -1,3 +1,4 @@
+import ast
 import json
 import math
 import numpy as np
@@ -5,6 +6,8 @@ import pandas as pd
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
+import re
+from pydantic import BaseModel
 
 app = FastAPI()
 
@@ -801,6 +804,7 @@ def get_manga_filters():
         "chapter_ranges": chapter_ranges,
         "volume_ranges": volume_ranges
     }
+
 @app.get("/manga/{manga_id}")
 async def get_manga_detail(manga_id: int):
     async with httpx.AsyncClient() as client:
@@ -861,8 +865,6 @@ async def get_manga_image(manga_id: int):
         "thumbnail_url": thumbnail_url
     })
 
-
-
 def build_graph():
     nodes = {}
     links = []
@@ -912,7 +914,6 @@ def build_graph():
                     continue
 
     return {"nodes": list(nodes.values()), "links": links}
-
 
 @app.get("/graph")
 async def get_graph():
@@ -1414,6 +1415,107 @@ import os
 from typing import Optional
 
 recommender = None
+class SearchRequest(BaseModel):
+    q: str
+    limit: int = 10
+
+import json
+
+@app.post("/anime/search")
+def search_anime(request: SearchRequest):
+    try:
+        global anime_df
+        if anime_df is None or anime_df.empty:
+            raise HTTPException(status_code=503, detail="Anime database not loaded")
+       
+        if len(request.q.strip()) < 2:
+            return {"data": [], "total": 0}
+       
+        df = anime_df
+        query = request.q.lower().strip()
+       
+        mask = (
+            df['title'].str.lower().str.contains(query, na=False, regex=False) |
+            df['title_english'].str.lower().str.contains(query, na=False, regex=False)
+        )
+       
+        total_results = mask.sum()
+        results = df[mask].head(request.limit)
+       
+        search_results = []
+        for _, row in results.iterrows():
+            title_english = row.get('title_english', '')
+            if pd.isna(title_english):
+                title_english = ''
+           
+            score = row.get('score')
+            if pd.isna(score):
+                score = None
+            else:
+                score = float(score)
+           
+            year = row.get('year')
+            if pd.isna(year):
+                year = None
+            else:
+                year = int(year)
+           
+            episodes = row.get('episodes')
+            if pd.isna(episodes):
+                episodes = None
+            else:
+                episodes = int(episodes)
+            
+            # Extract image URL from images JSON
+            image_url = None
+            images = row.get('images')
+            if pd.notna(images) and images:
+                try:
+                    if isinstance(images, str):
+                        images_data = json.loads(images)
+                    else:
+                        images_data = images
+                    
+                    # Try to get the best quality image available
+                    if 'webp' in images_data and 'large_image_url' in images_data['webp']:
+                        image_url = images_data['webp']['large_image_url']
+                    elif 'webp' in images_data and 'image_url' in images_data['webp']:
+                        image_url = images_data['webp']['image_url']
+                    elif 'jpg' in images_data and 'large_image_url' in images_data['jpg']:
+                        image_url = images_data['jpg']['large_image_url']
+                    elif 'jpg' in images_data and 'image_url' in images_data['jpg']:
+                        image_url = images_data['jpg']['image_url']
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    image_url = None
+           
+            search_results.append({
+                'mal_id': int(row['mal_id']),
+                'title': str(row['title']),
+                'title_english': title_english,
+                'score': score,
+                'year': year,
+                'type': str(row.get('type', '')),
+                'episodes': episodes,
+                'image_url': image_url
+            })
+       
+        return {
+            "data": search_results,
+            "total": int(total_results),
+            "query": request.q,
+            "limit": request.limit
+        }
+       
+    except Exception as e:
+        print(f"Search error: {str(e)}")
+        raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
+
+# Multi Recommend
+from typing import List, Dict, Any
+import numpy as np
+from sklearn.metrics.pairwise import cosine_similarity
+from collections import Counter
+
 
 def load_recommender():
     global recommender
@@ -1442,7 +1544,152 @@ def load_recommender():
                         self.df = model_data['df']
                         self.features = model_data['features']
                         self.model_info = model_data.get('model_info', {})
+                        self.setup_enhanced_genre_groups()
                     
+                    def setup_enhanced_genre_groups(self) -> None:
+                        """Enhanced semantic genre groups with cross-genre bridge categories"""
+                        self.genre_groups = {
+                            # Core demographics and target audience
+                            'shounen_action': ['Action', 'Adventure', 'Shounen', 'Super Power', 'Martial Arts', 'Tournament'],
+                            'seinen_mature': ['Seinen', 'Psychological', 'Thriller', 'Adult Cast', 'Workplace'],
+                            'shoujo_romance': ['Shoujo', 'Romance', 'School', 'Josei'],
+                            'josei_adult': ['Josei', 'Romance', 'Drama', 'Adult Cast'],
+                            
+                            # Genre combinations
+                            'dark_psychological': ['Horror', 'Thriller', 'Psychological', 'Gore', 'Supernatural'],
+                            'comedy_lighthearted': ['Comedy', 'Slice of Life', 'School', 'Gag Humor', 'Parody'],
+                            'sci_fi_tech': ['Sci-Fi', 'Mecha', 'Space', 'Cyberpunk', 'Technology'],
+                            'fantasy_magic': ['Fantasy', 'Magic', 'Supernatural', 'Mythology', 'Isekai'],
+                            
+                            # Thematic groups
+                            'sports_competition': ['Sports', 'Team Sports', 'Racing', 'Strategy Game'],
+                            'music_arts': ['Music', 'Performing Arts', 'Idols (Female)', 'Idols (Male)'],
+                            'historical_period': ['Historical', 'Samurai', 'Military'],
+                            'slice_of_life': ['Slice of Life', 'Iyashikei', 'CGDCT'],
+                            
+                            # Advanced themes
+                            'existential_deep': ['Philosophical', 'Psychological', 'Drama', 'Tragedy'],
+                            'adventure_journey': ['Adventure', 'Survival', 'Travel'],
+                            'mystery_detective': ['Mystery', 'Detective', 'Police'],
+                            'war_conflict': ['Military', 'War', 'Combat Sports'],
+                            
+                            # SPORTS BRIDGE CATEGORIES
+                            'psychological_sports': ['Sports', 'Psychological', 'Drama', 'Mental Health'],
+                            'action_sports': ['Sports', 'Action', 'Tournament', 'Martial Arts'],
+                            'supernatural_sports': ['Sports', 'Supernatural', 'Super Power', 'Fantasy'],
+                            'comedy_sports': ['Sports', 'Comedy', 'School', 'Slice of Life'],
+                            'romance_sports': ['Sports', 'Romance', 'School', 'Drama'],
+                            'dark_sports': ['Sports', 'Thriller', 'Psychological', 'Tragedy'],
+                            'team_drama': ['Sports', 'Drama', 'Friendship', 'Coming-of-Age'],
+                            'competitive_mindset': ['Sports', 'Strategy Game', 'Psychological', 'Mind Games'],
+                            
+                            # ACTION BRIDGE CATEGORIES
+                            'psychological_action': ['Action', 'Psychological', 'Thriller', 'Mind Games'],
+                            'comedy_action': ['Action', 'Comedy', 'Parody', 'Adventure'],
+                            'romance_action': ['Action', 'Romance', 'Adventure', 'Drama'],
+                            'sci_fi_action': ['Action', 'Sci-Fi', 'Mecha', 'Space'],
+                            'fantasy_action': ['Action', 'Fantasy', 'Magic', 'Supernatural'],
+                            'historical_action': ['Action', 'Historical', 'Samurai', 'Military'],
+                            'horror_action': ['Action', 'Horror', 'Supernatural', 'Gore'],
+                            'school_action': ['Action', 'School', 'Shounen', 'Super Power'],
+                            
+                            # PSYCHOLOGICAL BRIDGE CATEGORIES
+                            'psychological_horror': ['Psychological', 'Horror', 'Thriller', 'Supernatural'],
+                            'psychological_romance': ['Psychological', 'Romance', 'Drama', 'Adult Cast'],
+                            'psychological_sci_fi': ['Psychological', 'Sci-Fi', 'Cyberpunk', 'Philosophy'],
+                            'psychological_fantasy': ['Psychological', 'Fantasy', 'Supernatural', 'Mystery'],
+                            'psychological_mystery': ['Psychological', 'Mystery', 'Thriller', 'Detective'],
+                            'psychological_slice_of_life': ['Psychological', 'Slice of Life', 'Drama', 'Adult Cast'],
+                            'psychological_school': ['Psychological', 'School', 'Drama', 'Coming-of-Age'],
+                            
+                            # ROMANCE BRIDGE CATEGORIES
+                            'dark_romance': ['Romance', 'Psychological', 'Thriller', 'Drama'],
+                            'action_romance': ['Romance', 'Action', 'Adventure', 'Fantasy'],
+                            'sci_fi_romance': ['Romance', 'Sci-Fi', 'Space', 'Drama'],
+                            'fantasy_romance': ['Romance', 'Fantasy', 'Magic', 'Supernatural'],
+                            'historical_romance': ['Romance', 'Historical', 'Drama', 'Period'],
+                            'comedy_romance': ['Romance', 'Comedy', 'School', 'Slice of Life'],
+                            'music_romance': ['Romance', 'Music', 'Drama', 'Performing Arts'],
+                            'supernatural_romance': ['Romance', 'Supernatural', 'Fantasy', 'Drama'],
+                            
+                            # HORROR/THRILLER BRIDGE CATEGORIES
+                            'action_horror': ['Horror', 'Action', 'Supernatural', 'Gore'],
+                            'psychological_thriller': ['Thriller', 'Psychological', 'Mystery', 'Suspense'],
+                            'sci_fi_horror': ['Horror', 'Sci-Fi', 'Thriller', 'Supernatural'],
+                            'supernatural_thriller': ['Thriller', 'Supernatural', 'Mystery', 'Horror'],
+                            'school_horror': ['Horror', 'School', 'Supernatural', 'Thriller'],
+                            
+                            # COMEDY BRIDGE CATEGORIES
+                            'action_comedy': ['Comedy', 'Action', 'Adventure', 'Parody'],
+                            'romantic_comedy': ['Comedy', 'Romance', 'School', 'Slice of Life'],
+                            'fantasy_comedy': ['Comedy', 'Fantasy', 'Magic', 'Parody'],
+                            'sci_fi_comedy': ['Comedy', 'Sci-Fi', 'Parody', 'Space'],
+                            'school_comedy': ['Comedy', 'School', 'Slice of Life', 'Gag Humor'],
+                            'supernatural_comedy': ['Comedy', 'Supernatural', 'Fantasy', 'Parody'],
+                            
+                            # SCI-FI BRIDGE CATEGORIES
+                            'mecha_action': ['Sci-Fi', 'Mecha', 'Action', 'Military'],
+                            'cyberpunk_thriller': ['Sci-Fi', 'Cyberpunk', 'Thriller', 'Psychological'],
+                            'space_adventure': ['Sci-Fi', 'Space', 'Adventure', 'Action'],
+                            'sci_fi_drama': ['Sci-Fi', 'Drama', 'Psychological', 'Philosophy'],
+                            'time_travel': ['Sci-Fi', 'Drama', 'Romance', 'Mystery'],
+                            
+                            # FANTASY BRIDGE CATEGORIES
+                            'dark_fantasy': ['Fantasy', 'Horror', 'Supernatural', 'Gore'],
+                            'adventure_fantasy': ['Fantasy', 'Adventure', 'Action', 'Magic'],
+                            'isekai_adventure': ['Fantasy', 'Isekai', 'Adventure', 'Comedy'],
+                            'magical_girl': ['Fantasy', 'Magic', 'Shoujo', 'Action'],
+                            'mythology_fantasy': ['Fantasy', 'Mythology', 'Historical', 'Supernatural'],
+                            
+                            # DRAMA BRIDGE CATEGORIES
+                            'slice_of_life_drama': ['Drama', 'Slice of Life', 'Adult Cast', 'Workplace'],
+                            'historical_drama': ['Drama', 'Historical', 'Period', 'Romance'],
+                            'family_drama': ['Drama', 'Family', 'Slice of Life', 'Coming-of-Age'],
+                            'music_drama': ['Drama', 'Music', 'Performing Arts', 'Romance'],
+                            'workplace_drama': ['Drama', 'Workplace', 'Adult Cast', 'Seinen'],
+                            
+                            # SCHOOL/YOUTH BRIDGE CATEGORIES
+                            'school_drama': ['School', 'Drama', 'Coming-of-Age', 'Slice of Life'],
+                            'school_supernatural': ['School', 'Supernatural', 'Mystery', 'Horror'],
+                            'school_romance': ['School', 'Romance', 'Comedy', 'Drama'],
+                            'school_competition': ['School', 'Sports', 'Competition', 'Drama'],
+                            
+                            # MILITARY/WAR BRIDGE CATEGORIES
+                            'military_action': ['Military', 'Action', 'War', 'Mecha'],
+                            'military_drama': ['Military', 'Drama', 'Historical', 'Tragedy'],
+                            'military_sci_fi': ['Military', 'Sci-Fi', 'Mecha', 'Space'],
+                            'war_psychological': ['War', 'Psychological', 'Drama', 'Thriller'],
+                            
+                            # MUSIC/ARTS BRIDGE CATEGORIES
+                            'music_drama': ['Music', 'Drama', 'Romance', 'Coming-of-Age'],
+                            'music_school': ['Music', 'School', 'Drama', 'Competition'],
+                            'performing_arts_drama': ['Performing Arts', 'Drama', 'Romance', 'Competition'],
+                            'idol_comedy': ['Idols (Female)', 'Comedy', 'Music', 'Slice of Life'],
+                            
+                            # MYSTERY BRIDGE CATEGORIES
+                            'mystery_horror': ['Mystery', 'Horror', 'Supernatural', 'Thriller'],
+                            'mystery_psychological': ['Mystery', 'Psychological', 'Thriller', 'Detective'],
+                            'mystery_supernatural': ['Mystery', 'Supernatural', 'Horror', 'Fantasy'],
+                            'detective_action': ['Detective', 'Action', 'Mystery', 'Crime'],
+                            'school_mystery': ['Mystery', 'School', 'Supernatural', 'Thriller'],
+                            
+                            # ADVENTURE BRIDGE CATEGORIES
+                            'survival_adventure': ['Adventure', 'Survival', 'Thriller', 'Action'],
+                            'fantasy_adventure': ['Adventure', 'Fantasy', 'Action', 'Magic'],
+                            'space_adventure': ['Adventure', 'Space', 'Sci-Fi', 'Action'],
+                            'historical_adventure': ['Adventure', 'Historical', 'Action', 'Drama'],
+                            
+                            # NICHE BRIDGE CATEGORIES
+                            'competitive_gaming': ['Strategy Game', 'Competition', 'Psychological', 'Drama'],
+                            'food_culture': ['Gourmet', 'Slice of Life', 'Comedy', 'Drama'],
+                            'otaku_culture': ['Otaku Culture', 'Comedy', 'Parody', 'Romance'],
+                            'coming_of_age': ['Coming-of-Age', 'Drama', 'School', 'Slice of Life'],
+                            'philosophy_existential': ['Philosophy', 'Psychological', 'Drama', 'Existential'],
+                            'tournament_battle': ['Tournament', 'Action', 'Competition', 'Super Power'],
+                            'team_friendship': ['Team Sports', 'Friendship', 'Drama', 'Coming-of-Age'],
+                            'artistic_expression': ['Art', 'Drama', 'Romance', 'Coming-of-Age']
+                        }
+    
                     def parse_list(self, x):
                         """Parse JSON-like strings to extract names"""
                         if pd.isna(x) or x == "":
@@ -1636,9 +1883,648 @@ def load_recommender():
                 print(f"Failed to load {model_file}: {e}")
                 continue
     
+    # Add this to your load_recommender function or recommender class
+    def parse_list(self, x):
+        """Parse JSON-like strings to extract names"""
+        if pd.isna(x) or x == "":
+            return []
+        
+        try:
+            if isinstance(x, str) and x.startswith("["):
+                parsed = ast.literal_eval(x)
+                if isinstance(parsed, list):
+                    return [d.get("name", "") for d in parsed if isinstance(d, dict) and "name" in d]
+            elif isinstance(x, list):
+                return x
+            return []
+        except (ValueError, SyntaxError):
+            return []
+
+    # Make sure recommender has the expanded genre_groups from earlier
+    recommender.parse_list = parse_list
     print("Warning: No recommender model found")
     return None
 
+def detect_bridge_content(candidate_row, source_anime_list, recommender):
+    """Detect if candidate bridges multiple source anime themes using genre groups"""
+    
+    # Only works for pairs currently
+    if len(source_anime_list) != 2:
+        return 0.0
+    
+    # Get candidate tags
+    candidate_genres = set(recommender.parse_list(candidate_row.get('genres', '')))
+    candidate_themes = set(recommender.parse_list(candidate_row.get('themes', '')))
+    candidate_tags = candidate_genres.union(candidate_themes)
+    
+    if not candidate_tags:  # No tags to analyze
+        return 0.0
+    
+    # Get source tags
+    source_tag_sets = []
+    for anime in source_anime_list:
+        source_genres = set(recommender.parse_list(anime['data'].get('genres', '')))
+        source_themes = set(recommender.parse_list(anime['data'].get('themes', '')))
+        source_tags = source_genres.union(source_themes)
+        source_tag_sets.append(source_tags)
+    
+    source1_tags, source2_tags = source_tag_sets
+    
+    # Find which genre groups each source belongs to
+    source1_groups = set()
+    source2_groups = set()
+    candidate_groups = set()
+    
+    for group_name, group_tags in recommender.genre_groups.items():
+        # Check if source 1 matches this group
+        if any(tag in source1_tags for tag in group_tags):
+            source1_groups.add(group_name)
+        
+        # Check if source 2 matches this group
+        if any(tag in source2_tags for tag in group_tags):
+            source2_groups.add(group_name)
+        
+        # Check if candidate matches this group
+        if any(tag in candidate_tags for tag in group_tags):
+            candidate_groups.add(group_name)
+    
+    # Calculate bridge potential
+    # 1. Direct tag overlap with each source
+    overlap1 = len(candidate_tags.intersection(source1_tags))
+    overlap2 = len(candidate_tags.intersection(source2_tags))
+    
+    # Must have meaningful overlap with BOTH sources to be a bridge
+    if overlap1 < 1 or overlap2 < 1:
+        return 0.0
+    
+    # 2. Check if sources are different enough to need bridging
+    shared_source_groups = source1_groups.intersection(source2_groups)
+    total_source_groups = source1_groups.union(source2_groups)
+    
+    # If sources share too many groups, they don't need bridging
+    if len(total_source_groups) == 0:
+        source_dissimilarity = 0.0
+    else:
+        source_dissimilarity = 1.0 - (len(shared_source_groups) / len(total_source_groups))
+    
+    # Sources must be sufficiently different
+    if source_dissimilarity < 0.3:
+        return 0.0
+    
+    # 3. Check if candidate connects the different groups
+    connects_source1 = len(candidate_groups.intersection(source1_groups))
+    connects_source2 = len(candidate_groups.intersection(source2_groups))
+    
+    # Bridge scoring
+    bridge_score = 0.0
+    
+    # Basic bridge: overlaps with both sources
+    basic_bridge = (overlap1 + overlap2) / (len(source1_tags) + len(source2_tags))
+    bridge_score += basic_bridge * 0.3
+    
+    # Group bridge: connects different genre groups
+    if connects_source1 > 0 and connects_source2 > 0:
+        group_connection_strength = (connects_source1 + connects_source2) / len(candidate_groups) if candidate_groups else 0
+        bridge_score += group_connection_strength * 0.4 * source_dissimilarity
+    
+    # Look for specialized bridge categories that explicitly connect the source types
+    bridge_categories = []
+    for group_name in candidate_groups:
+        # Check if this is a bridge category (contains elements from both sources)
+        group_tags = set(recommender.genre_groups[group_name])
+        if (any(tag in group_tags for tag in source1_tags) and 
+            any(tag in group_tags for tag in source2_tags)):
+            bridge_categories.append(group_name)
+    
+    # Bonus for explicit bridge categories
+    if bridge_categories:
+        bridge_bonus = min(0.3, len(bridge_categories) * 0.1)
+        bridge_score += bridge_bonus
+    
+    # Apply source dissimilarity multiplier
+    bridge_score *= source_dissimilarity
+    
+    # Cap the maximum bridge score
+    return min(bridge_score, 0.5)
+
+def calculate_genre_group_bonus(candidate_row, source_anime_list, recommender):
+    """Calculate bonus for genre group overlaps and thematic bridges"""
+    
+    candidate_genres = set(recommender.parse_list(candidate_row.get('genres', '')))
+    candidate_themes = set(recommender.parse_list(candidate_row.get('themes', '')))
+    candidate_tags = candidate_genres.union(candidate_themes)
+    
+    if not candidate_tags:
+        return 0.0
+    
+    # Find genre groups for candidate
+    candidate_groups = set()
+    for group_name, group_tags in recommender.genre_groups.items():
+        if any(tag in candidate_tags for tag in group_tags):
+            candidate_groups.add(group_name)
+    
+    total_bonus = 0.0
+    source_group_sets = []
+    
+    # Get genre groups for each source
+    for anime in source_anime_list:
+        source_genres = set(recommender.parse_list(anime['data'].get('genres', '')))
+        source_themes = set(recommender.parse_list(anime['data'].get('themes', '')))
+        source_tags = source_genres.union(source_themes)
+        
+        source_groups = set()
+        for group_name, group_tags in recommender.genre_groups.items():
+            if any(tag in source_tags for tag in group_tags):
+                source_groups.add(group_name)
+        
+        source_group_sets.append(source_groups)
+        
+        # Direct group overlap bonus
+        group_overlap = len(candidate_groups.intersection(source_groups))
+        if group_overlap > 0:
+            total_bonus += group_overlap * 0.1
+    
+    # Cross-genre bridge bonus for different source types
+    if len(source_anime_list) == 2:
+        source1_groups, source2_groups = source_group_sets
+        
+        # Check if sources are different enough to benefit from bridging
+        shared_groups = source1_groups.intersection(source2_groups)
+        total_groups = source1_groups.union(source2_groups)
+        
+        if len(total_groups) > 0:
+            dissimilarity = 1.0 - (len(shared_groups) / len(total_groups))
+            
+            # If sources are different, reward candidates that connect them
+            if dissimilarity > 0.4:  # Sources are sufficiently different
+                connects_both = (len(candidate_groups.intersection(source1_groups)) > 0 and 
+                               len(candidate_groups.intersection(source2_groups)) > 0)
+                
+                if connects_both:
+                    bridge_strength = min(len(candidate_groups.intersection(source1_groups)),
+                                        len(candidate_groups.intersection(source2_groups)))
+                    total_bonus += bridge_strength * 0.3 * dissimilarity
+    
+    return min(total_bonus, 0.6)  # Cap bonus
+
+@app.post("/anime/multi-recommend")
+def get_multi_anime_recommendations(
+    request: Dict[str, Any],
+    top_k: int = 20,
+    min_score: float = None,
+    include_sequels: bool = True,
+    explain: bool = False,
+    diversity_weight: float = 0.0
+):
+    """
+    Generate balanced recommendations using equal weighting approach
+    """
+    anime_ids = request.get('anime_ids', [])
+    top_k = request.get('top_k', top_k)
+    min_score = request.get('min_score', min_score)
+    include_sequels = request.get('include_sequels', include_sequels)
+    explain = request.get('explain', explain)
+    diversity_weight = request.get('diversity_weight', diversity_weight)
+    
+    if not anime_ids:
+        return {"error": "No anime IDs provided"}
+    
+    if len(anime_ids) > 20:
+        return {"error": "Too many anime selected (max 20)"}
+    
+    recommender = load_recommender()
+    if not recommender:
+        return {"error": "Recommender not available"}
+
+    def safe_float(value):
+        if value is None:
+            return None
+        try:
+            if pd.isna(value):
+                return None
+            float_val = float(value)
+            if not np.isfinite(float_val):
+                return None
+            return float_val
+        except (ValueError, TypeError, OverflowError):
+            return None
+    
+    def safe_int(value):
+        if value is None or pd.isna(value):
+            return None
+        try:
+            return int(value)
+        except (ValueError, TypeError, OverflowError):
+            return None
+
+    def is_sequel_or_related(row, selection_rows):
+        """
+        Check if `row` anime is a sequel or related to any anime in `selection_rows`.
+        Safe for pandas.Series input.
+        """
+        try:
+            # Convert row to dict if it's a Series
+            if isinstance(row, pd.Series):
+                row_dict = row.to_dict()
+            else:
+                row_dict = row
+
+            # Parse relations of candidate
+            relations_data = row_dict.get("relations", "[]")
+            if isinstance(relations_data, str):
+                try:
+                    relations_data = json.loads(relations_data)
+                except json.JSONDecodeError:
+                    relations_data = []
+
+            related_ids = set()
+            for rel in relations_data:
+                entries = rel.get("entry", [])
+                for entry in entries:
+                    related_ids.add(entry.get("mal_id"))
+
+            # Compare with selected anime mal_ids and relations
+            for anime in selection_rows:
+                anime_data = anime['data']
+                if isinstance(anime_data, pd.Series):
+                    anime_data = anime_data.to_dict()
+
+                # Direct mal_id match via relations
+                if anime['id'] in related_ids:
+                    return True
+
+                # Compare with the selected anime's relations
+                sel_relations = anime_data.get("relations", "[]")
+                if isinstance(sel_relations, str):
+                    try:
+                        sel_relations = json.loads(sel_relations)
+                    except json.JSONDecodeError:
+                        sel_relations = []
+
+                for rel in sel_relations:
+                    for entry in rel.get("entry", []):
+                        if entry.get("mal_id") == row_dict.get("mal_id"):
+                            return True
+
+            return False
+
+        except Exception:
+            # Fallback: use title-based matching
+            row_title = str(row.get("title") if isinstance(row, dict) else row["title"])
+            for anime in selection_rows:
+                anime_data = anime['data']
+                anime_title = str(anime_data.get("title") if isinstance(anime_data, dict) else anime_data["title"])
+                if old_title_match(row_title, anime_title):
+                    return True
+            return False
+
+    def old_title_match(title1, title2):
+        title1_clean = re.sub(r'[^\w\s]', '', str(title1).lower().strip())
+        title2_clean = re.sub(r'[^\w\s]', '', str(title2).lower().strip())
+        if title1_clean == title2_clean:
+            return True
+        
+        sequel_patterns = [
+            r'\b(season|series|part|arc|chapter|saga|movie|ova|special|tv|ona|sequel|prequel)\b',
+            r'\b(2nd|3rd|second|third|fourth|final|last|next|new|recap|memorial)\b',
+            r'\b(vs?|versus|and|&|x|plus|\+)\b',
+            r'\d+',
+            r'\b(hen|jidai|ki|senki|kai|tachi|no|ga|wo|ni|de|to|da)\b'
+        ]
+        
+        base1, base2 = title1_clean, title2_clean
+        for pattern in sequel_patterns:
+            base1 = re.sub(pattern, '', base1, flags=re.IGNORECASE).strip()
+            base2 = re.sub(pattern, '', base2, flags=re.IGNORECASE).strip()
+        
+        base1, base2 = ' '.join(base1.split()), ' '.join(base2.split())
+        if len(base1) < 2 or len(base2) < 2:
+            return False
+        if base1 in base2 or base2 in base1:
+            return True
+        words1, words2 = set(base1.split()), set(base2.split())
+        if len(words1) <= 3 and len(words2) <= 3:
+            overlap = len(words1.intersection(words2))
+            if overlap >= min(len(words1), len(words2)) * 0.8:
+                return True
+        return False
+
+    try:
+        # Get valid anime from selection
+        valid_anime = []
+        for anime_id in anime_ids:
+            if anime_id in recommender.df['mal_id'].values:
+                source_idx = recommender.df[recommender.df['mal_id'] == anime_id].index[0]
+                valid_anime.append({
+                    'id': anime_id,
+                    'data': recommender.df.iloc[source_idx],
+                    'features': recommender.features[source_idx],
+                    'index': source_idx
+                })
+        
+        if not valid_anime:
+            return {"error": "No valid anime found in selection"}
+        
+        selected_mal_ids = [anime['id'] for anime in valid_anime]
+        
+        # Strategy: Get separate recommendation lists for each source anime, then merge fairly
+        individual_recs = {}
+        
+        for i, source_anime in enumerate(valid_anime):
+            # Get similarities for this specific source
+            similarities = cosine_similarity([source_anime['features']], recommender.features)[0]
+            similarities = np.nan_to_num(similarities, nan=0.0, posinf=1.0, neginf=0.0)
+            
+            # Get top candidates for this source
+            candidate_indices = np.argsort(similarities)[::-1]
+            
+            rank = 0
+            for idx in candidate_indices:
+                if rank >= top_k * 3:  # Limit candidates per source
+                    break
+                    
+                mal_id = recommender.df.iloc[idx]['mal_id']
+                
+                # Skip self
+                if mal_id in selected_mal_ids:
+                    continue
+                
+                # Skip if doesn't meet score requirement
+                row = recommender.df.iloc[idx]
+                if min_score is not None and (pd.isna(row['score']) or row['score'] < min_score):
+                    continue
+                
+                # Skip sequels if requested
+                if not include_sequels:
+                    if is_sequel_or_related(row, valid_anime):
+                        continue
+                
+                similarity_score = similarities[idx]
+                
+                # Only include if similarity is reasonable (avoid noise)
+                if similarity_score < 0.15:
+                    continue
+                
+                if mal_id not in individual_recs:
+                    individual_recs[mal_id] = {
+                        'data': row,
+                        'index': idx,
+                        'source_similarities': {},
+                        'source_ranks': {},
+                        'best_similarity': 0,
+                        'total_score': 0
+                    }
+                
+                individual_recs[mal_id]['source_similarities'][i] = similarity_score
+                individual_recs[mal_id]['source_ranks'][i] = rank
+                individual_recs[mal_id]['best_similarity'] = max(individual_recs[mal_id]['best_similarity'], similarity_score)
+                
+                rank += 1
+        
+        # Now score each candidate fairly
+        final_candidates = []
+
+        for mal_id, rec_data in individual_recs.items():
+                similarities = []
+                ranks = []
+                source_count = len(valid_anime)
+                
+                for i in range(source_count):
+                    sim = rec_data['source_similarities'].get(i, 0)
+                    rank = rec_data['source_ranks'].get(i, 999)
+                    similarities.append(sim)
+                    ranks.append(rank)
+                
+                # Calculate base metrics
+                avg_similarity = np.mean(similarities)
+                min_similarity = min(similarities)
+                max_similarity = max(similarities)
+                
+                # Calculate how many sources recommend this anime significantly
+                strong_recommendations = sum(1 for s in similarities if s > 0.25)
+                
+                # NEW: Calculate genre group bonus
+                genre_bonus = calculate_genre_group_bonus(rec_data['data'], valid_anime, recommender)
+                
+                # Enhanced scoring with genre awareness
+                if len(valid_anime) == 2:
+                    # For pairs: Balance direct similarity with genre bridging
+                    base_score = avg_similarity * 1.2
+                    
+                    # Boost for genre connections
+                    if genre_bonus > 0.3:  # Strong thematic connection
+                        final_score = base_score * 1.5 + genre_bonus
+                    elif genre_bonus > 0.15:  # Moderate connection
+                        final_score = base_score * 1.3 + genre_bonus
+                    elif min_similarity > 0.2:  # Direct similarity to both
+                        final_score = base_score * 1.4
+                    else:
+                        # Fallback: favor the stronger connection with genre boost
+                        final_score = (max_similarity * 0.8 + avg_similarity * 0.5) + genre_bonus
+                else:
+                    # Multiple sources: use proportional representation with genre boost
+                    proportion_recommending = strong_recommendations / len(valid_anime)
+                    base_score = avg_similarity * (0.7 + 0.5 * proportion_recommending)
+                    final_score = base_score + genre_bonus
+                            
+                final_candidates.append({
+                    'mal_id': mal_id,
+                    'final_score': final_score,
+                    'avg_similarity': avg_similarity,
+                    'min_similarity': min_similarity,
+                    'max_similarity': max_similarity,
+                    'similarities': similarities,
+                    'strong_recommendations': strong_recommendations,
+                    'genre_bonus': genre_bonus,  
+                    'data': rec_data['data'],
+                    'index': rec_data['index']
+                }) 
+        # Sort by final score
+        final_candidates.sort(key=lambda x: x['final_score'], reverse=True)
+
+        if len(valid_anime) >= 2:
+            # Separate bridge content from regular recommendations
+            bridge_candidates = [c for c in final_candidates if c['genre_bonus'] > 0.2]  # Use genre_bonus
+            regular_candidates = [c for c in final_candidates if c['genre_bonus'] <= 0.2]
+            
+            # Take top bridge content first (up to 40% of results)
+            bridge_count = min(len(bridge_candidates), int(top_k * 0.4))
+            selected_recommendations = bridge_candidates[:bridge_count]
+            
+            # Fill remaining slots proportionally from each source
+            remaining_slots = top_k - len(selected_recommendations)
+            
+            if remaining_slots > 0:
+                # Group remaining candidates by their strongest source
+                source_groups = {i: [] for i in range(len(valid_anime))}
+                taken_ids = {c['mal_id'] for c in selected_recommendations}
+                
+                for candidate in regular_candidates:
+                    if candidate['mal_id'] not in taken_ids:
+                        # Find which source this is most similar to
+                        best_source_idx = candidate['similarities'].index(max(candidate['similarities']))
+                        source_groups[best_source_idx].append(candidate)
+                
+                # Take proportionally from each source
+                per_source = max(1, remaining_slots // len(valid_anime))
+                remainder = remaining_slots % len(valid_anime)
+                
+                for i, candidates in source_groups.items():
+                    take_count = per_source + (1 if i < remainder else 0)
+                    selected_recommendations.extend(candidates[:take_count])
+            
+            # Update final_candidates to use our balanced selection
+            final_candidates = selected_recommendations[:top_k]
+        
+        # Apply diversity penalty if requested
+        if diversity_weight > 0:
+            for candidate in final_candidates:
+                penalty = 0
+                for anime in valid_anime:
+                    if is_sequel_or_related(candidate['data'], [anime]):
+                        penalty += diversity_weight
+                
+                candidate['final_score'] = max(0, candidate['final_score'] - penalty)
+            
+            # Re-sort after penalty
+            final_candidates.sort(key=lambda x: x['final_score'], reverse=True)
+        
+        # Build recommendations
+        recommendations = []
+        for candidate in final_candidates[:top_k]:
+            row = candidate['data']
+            
+            synopsis = row.get('synopsis', '')
+            synopsis = str(synopsis) if pd.notna(synopsis) else ''
+            
+            # Get image URL
+            image_url = None
+            thumbnail_url = None
+            anime_row = anime_df[anime_df['mal_id'] == row['mal_id']]
+            if not anime_row.empty:
+                images_data = anime_row.iloc[0].get('images')
+                if pd.notna(images_data):
+                    try:
+                        if isinstance(images_data, str):
+                            images_dict = json.loads(images_data)
+                        else:
+                            images_dict = images_data
+                        
+                        if isinstance(images_dict, dict):
+                            if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
+                                image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
+                                thumbnail_url = images_dict['webp'].get('small_image_url')
+                            elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
+                                image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
+                                thumbnail_url = images_dict['jpg'].get('small_image_url')
+                    except:
+                        pass
+
+            rec_item = {
+                'mal_id': safe_int(row['mal_id']),
+                'title': str(row['title']),
+                'title_english': str(row.get('title_english', '')),
+                'score': safe_float(row['score']),
+                'similarity': safe_float(candidate['final_score']),
+                'avg_similarity': safe_float(candidate['avg_similarity']),
+                'min_similarity': safe_float(candidate['min_similarity']),
+                'max_similarity': safe_float(candidate['max_similarity']),
+                'individual_similarities': [safe_float(s) for s in candidate['similarities']],
+                'strong_recommendations': candidate['strong_recommendations'],
+                'type': str(row.get('type', '')),
+                'episodes': safe_int(row['episodes']),
+                'year': safe_int(row['year']),
+                'image_url': image_url,
+                'thumbnail_url': thumbnail_url,
+                'synopsis': synopsis[:200] + "..." if synopsis and len(synopsis) > 200 else synopsis
+            }
+            
+            # Add explanation
+            if explain:
+                sims = candidate['similarities']
+                genre_bonus = candidate.get('genre_bonus', 0)  
+                
+                if len(valid_anime) == 2:
+                    if genre_bonus > 0.3:
+                        rec_item['explanation'] = "Bridges themes from both your selections"
+                    elif genre_bonus > 0.2:
+                        rec_item['explanation'] = "Connects elements from both selections"
+                    elif candidate['min_similarity'] > 0.25:
+                        rec_item['explanation'] = "Strong appeal to both your selections"
+                    elif candidate['min_similarity'] > 0.15:
+                        rec_item['explanation'] = "Moderate appeal to both selections"
+                    elif candidate['max_similarity'] > 0.4:
+                        max_idx = sims.index(max(sims))
+                        source_title = valid_anime[max_idx]['data']['title']
+                        rec_item['explanation'] = f"Strongest similarity to {source_title}"
+                    else:
+                        rec_item['explanation'] = "Balanced recommendation across selections"
+                else:
+                    if genre_bonus > 0.25:
+                        rec_item['explanation'] = "Bridges multiple aspects of your selection"
+                    else:
+                        proportion = candidate['strong_recommendations'] / len(valid_anime)
+                        if proportion >= 0.8:
+                            rec_item['explanation'] = "Appeals to most of your selections"
+                        elif proportion >= 0.5:
+                            rec_item['explanation'] = "Appeals to several of your selections"
+                        else:
+                            rec_item['explanation'] = "Selective appeal to your tastes"
+                
+                rec_item['genre_bonus'] = safe_float(genre_bonus)
+            recommendations.append(rec_item)
+        
+        # Build source anime list
+        source_anime_list = []
+        for anime in valid_anime:
+            source_image_url = None
+            source_thumbnail_url = None
+            source_anime_row = anime_df[anime_df['mal_id'] == anime['data']['mal_id']]
+            if not source_anime_row.empty:
+                images_data = source_anime_row.iloc[0].get('images')
+                if pd.notna(images_data):
+                    try:
+                        if isinstance(images_data, str):
+                            images_dict = json.loads(images_data)
+                        else:
+                            images_dict = images_data
+                        
+                        if isinstance(images_dict, dict):
+                            if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
+                                source_image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
+                                source_thumbnail_url = images_dict['webp'].get('small_image_url')
+                            elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
+                                source_image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
+                                source_thumbnail_url = images_dict['jpg'].get('small_image_url')
+                    except:
+                        pass
+            
+            source_anime_list.append({
+                'mal_id': safe_int(anime['data']['mal_id']),
+                'title': str(anime['data']['title']),
+                'score': safe_float(anime['data']['score']),
+                'image_url': source_image_url,
+                'thumbnail_url': source_thumbnail_url
+            })
+        
+        return {
+            'source_anime': source_anime_list,
+            'recommendations': recommendations,
+            'method': 'balanced_individual_recs',
+            'total_candidates_considered': len(individual_recs),
+            'filters_applied': {
+                'min_score': min_score,
+                'include_sequels': include_sequels,
+                'explain': explain,
+                'diversity_weight': diversity_weight
+            }
+        }
+        
+    except Exception as e:
+        print(f"Multi-recommend error: {str(e)}")
+        return {"error": f"Recommendation failed: {str(e)}"}
+    
+# Single Recommend
 @app.get("/anime/{anime_id}/recommend")
 def get_anime_recommendations(
     anime_id: int,
