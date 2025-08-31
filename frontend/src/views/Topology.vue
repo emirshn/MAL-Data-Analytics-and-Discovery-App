@@ -154,11 +154,8 @@ import { ref, onMounted, nextTick, computed } from 'vue'
 import axios from 'axios'
 import * as d3 from 'd3'
 
-/**
- * =========================
- * Reactive state - Fixed to prevent recursive updates
- * =========================
- */
+// Reactive state
+
 const loading = ref(true)
 const error = ref(null)
 const progressText = ref('')
@@ -184,11 +181,8 @@ function getTypeColor(type) {
   }
   return colors[type] || '#6b7280'
 }
-/**
- * =========================
- * Computed properties to prevent reactive mutations
- * =========================
- */
+// Computed properties to prevent reactive mutations
+
 const svgDimensions = computed(() => ({
   width: 2400,
   height: 1600,
@@ -196,11 +190,8 @@ const svgDimensions = computed(() => ({
 
 const visibleElementsCount = computed(() => visibleElements.value.length)
 
-/**
- * =========================
- * Refs / graph state - Fixed references
- * =========================
- */
+// Refs / graph state - Fixed references
+
 const svgRef = ref(null)
 const minimapRef = ref(null)
 
@@ -209,11 +200,8 @@ let svg, container, zoom, simulation
 let nodeMap = new Map()
 let latestSeriesClusters = []
 
-/**
- * =========================
- * Constants
- * =========================
- */
+// Constants
+
 const VIEW_LEVELS = {
   OVERVIEW: 'Overview',
   MEGA_CLUSTER: 'Mega Cluster',
@@ -225,11 +213,7 @@ const MEGA_CLUSTER_THRESHOLD = 150
 const MEGA_CLUSTER_SIZE = 12
 const MAX_ITEMS_VISIBLE_IN_CLUSTER = 1500
 
-/**
- * =========================
- * Web Worker (inline)
- * =========================
- */
+//Web Worker (inline)
 function createClusterWorker() {
   const workerCode = `
     onmessage = (e) => {
@@ -507,11 +491,8 @@ function createClusterWorker() {
   return new Worker(URL.createObjectURL(blob))
 }
 
-/**
- * =========================
- * Rendering helpers
- * =========================
- */
+// Rendering helpers
+
 const getElementColor = (element) => {
   if (element.isCluster) {
     switch (element.clusterType) {
@@ -560,11 +541,8 @@ const getElementStrokeColor = (element) => {
   }
 }
 
-/**
- * =========================
- * D3 rendering
- * =========================
- */
+//D3 rendering
+
 function setupSVG() {
   const svgEl = svgRef.value
   if (!svgEl) {
@@ -580,10 +558,8 @@ function setupSVG() {
   svg.selectAll('*').remove()
   container = svg.append('g').attr('class', 'main-container')
 
-  // Add gradients and filters
   const defs = svg.append('defs')
 
-  // Create gradients for different node types
   const colors = [
     { name: '3B82F6', light: '#60A5FA', dark: '#1E40AF' },
     { name: 'EC4899', light: '#F472B6', dark: '#BE185D' },
@@ -593,7 +569,6 @@ function setupSVG() {
   ]
 
   colors.forEach((color) => {
-    // Radial gradient for nodes
     const radialGrad = defs
       .append('radialGradient')
       .attr('id', `radial-gradient-${color.name}`)
@@ -619,7 +594,6 @@ function setupSVG() {
       .attr('stop-color', color.dark)
       .attr('stop-opacity', 0.6)
 
-    // Glow gradient
     const glowGrad = defs
       .append('radialGradient')
       .attr('id', `glow-gradient-${color.name}`)
@@ -640,7 +614,6 @@ function setupSVG() {
       .attr('stop-opacity', 0)
   })
 
-  // Nebula gradient for mega clusters
   const nebulaGrad = defs
     .append('radialGradient')
     .attr('id', 'nebula-gradient')
@@ -666,7 +639,6 @@ function setupSVG() {
     .attr('stop-color', '#1E1B4B')
     .attr('stop-opacity', 0)
 
-  // Glow filter
   const glowFilter = defs
     .append('filter')
     .attr('id', 'glow')
@@ -726,7 +698,6 @@ function renderMinimap() {
   const minimap = d3.select(minimapRef.value)
   minimap.selectAll('*').remove()
 
-  // Add minimap background
   minimap
     .append('rect')
     .attr('width', '100%')
@@ -772,7 +743,7 @@ function renderElements(elements, elementType, links = []) {
   // Create node lookup map for link references
   const nodeById = new Map(elemsCopy.map((node) => [node.id, node]))
 
-  // Process links to ensure they reference actual nodes
+  // Process links
   const processedLinks = links
     .map((link) => {
       const sourceId = typeof link.source === 'object' ? link.source.id : link.source
@@ -783,28 +754,22 @@ function renderElements(elements, elementType, links = []) {
     })
     .filter(Boolean)
 
-  // Create simulation with adjusted forces
+  // Create simulation
   simulation = d3
     .forceSimulation(elemsCopy)
-    .force('charge', d3.forceManyBody().strength(-200)) // Reduce repulsion strength
+    .force('charge', d3.forceManyBody().strength(-200))
     .force(
       'center',
       d3.forceCenter(svgDimensions.value.width / 2, svgDimensions.value.height / 2).strength(0.1),
-    ) // Adjust center strength
+    )
     .force(
       'collision',
       d3
         .forceCollide()
-        .radius((d) => Math.max(25, Math.sqrt(d.size || 1) * 6)) // Adjust collision radius
-        .strength(0.8), // Adjust collision strength
+        .radius((d) => Math.max(25, Math.sqrt(d.size || 1) * 6))
+        .strength(0.8),
     )
-    .force(
-      'link',
-      d3
-        .forceLink(processedLinks)
-        .distance(150) // Adjust link distance
-        .strength(0.5), // Adjust link strength
-    )
+    .force('link', d3.forceLink(processedLinks).distance(150).strength(0.5))
 
   // Add link force if we have links
   if (processedLinks.length > 0) {
@@ -817,7 +782,7 @@ function renderElements(elements, elementType, links = []) {
         .strength(0.8),
     )
 
-    // Create enhanced links with multiple layers
+    // Create enhanced links
     const linkGroups = container
       .append('g')
       .attr('class', 'links')
@@ -845,7 +810,6 @@ function renderElements(elements, elementType, links = []) {
       .attr('stroke-dasharray', '4,4')
       .style('animation', 'energy-flow 3s linear infinite')
 
-    // Pulse effect for strong connections
     linkGroups
       .filter((d) => (d.weight || 1) > 2)
       .append('line')
@@ -856,7 +820,6 @@ function renderElements(elements, elementType, links = []) {
       .style('animation', 'connection-pulse 2s ease-in-out infinite')
   }
 
-  // Create node groups
   const elementGroups = container
     .append('g')
     .attr('class', 'nodes')
@@ -871,7 +834,6 @@ function renderElements(elements, elementType, links = []) {
     .on('click', handleElementClick)
     .on('dblclick', handleElementDoubleClick)
 
-  // Add nebula backgrounds for mega clusters
   elementGroups
     .filter((d) => d.clusterType === 'mega')
     .insert('ellipse', ':first-child')
@@ -881,7 +843,6 @@ function renderElements(elements, elementType, links = []) {
     .attr('fill', 'url(#nebula-gradient)')
     .attr('opacity', 0.3)
 
-  // Add outer glow circles
   elementGroups
     .append('circle')
     .attr('class', 'node-glow')
@@ -901,7 +862,6 @@ function renderElements(elements, elementType, links = []) {
     })
     .attr('opacity', 0.4)
 
-  // Style Big Chungus differently to indicate it's non-interactive
   elementGroups
     .filter((d) => d.id === 'bigChungus')
     .style('cursor', 'not-allowed')
@@ -915,7 +875,7 @@ function renderElements(elements, elementType, links = []) {
     .attr('font-weight', 'bold')
     .style('pointer-events', 'none')
     .text('70k+ items - view only')
-  // Add main node circles
+
   function getHexagonPoints(radius) {
     const points = []
     for (let i = 0; i < 6; i++) {
@@ -927,7 +887,6 @@ function renderElements(elements, elementType, links = []) {
     return points.join(' ')
   }
 
-  // Create hexagonal clusters
   elementGroups
     .filter((d) => d.isCluster)
     .append('polygon')
@@ -947,7 +906,6 @@ function renderElements(elements, elementType, links = []) {
     .attr('stroke-width', 3)
     .attr('filter', 'url(#glow)')
 
-  // Create different shapes for different node types
   elementGroups
     .filter((d) => !d.isCluster && d.type === 'anime')
     .append('rect')
@@ -969,7 +927,7 @@ function renderElements(elements, elementType, links = []) {
     .filter((d) => !d.isCluster && d.type === 'manga')
     .append('path')
     .attr('class', 'node-manga')
-    .attr('d', 'M0,-15 L13,0 L0,15 L-13,0 Z') // Diamond shape
+    .attr('d', 'M0,-15 L13,0 L0,15 L-13,0 Z')
     .attr('fill', (d) => {
       const color = getElementColor(d).substring(1)
       return `url(#radial-gradient-${color})`
@@ -998,7 +956,6 @@ function renderElements(elements, elementType, links = []) {
     .attr('stroke-width', 2)
     .attr('filter', 'url(#glow)')
 
-  // Add inner sparkle effect for clusters
   elementGroups
     .filter((d) => d.isCluster)
     .append('circle')
@@ -1009,7 +966,6 @@ function renderElements(elements, elementType, links = []) {
     .attr('cx', -5)
     .attr('cy', -5)
 
-  // Add labels with better styling
   elementGroups
     .append('text')
     .attr('class', 'element-label')
@@ -1042,6 +998,7 @@ function renderElements(elements, elementType, links = []) {
       const maxLength = elementType === 'cluster' ? (d.size > 100 ? 35 : d.size > 50 ? 30 : 25) : 25
       return name.length > maxLength ? name.substring(0, maxLength - 3) + '...' : name
     })
+
   // Add composition indicators for large clusters
   elementGroups
     .filter((d) => d.isCluster && d.size > 20)
@@ -1100,8 +1057,8 @@ function renderElements(elements, elementType, links = []) {
         .attr('font-weight', 'bold')
         .text(total)
     })
+
   // Update positions on each tick
-  // Update positions on each tick with enhanced link rendering
   simulation.on('tick', () => {
     // Update all link types
     container
@@ -1125,7 +1082,6 @@ function renderElements(elements, elementType, links = []) {
       .forEach((d) => addParticleEffect(d, container))
   }, 1000)
 
-  // Heat up the simulation
   simulation.alpha(1).restart()
 
   // Update visible elements
@@ -1135,11 +1091,8 @@ function renderElements(elements, elementType, links = []) {
   })
 }
 
-/**
- * =========================
- * View transitions
- * =========================
- */
+// View transitions
+
 function renderOverview() {
   currentCluster.value = null
   currentViewLevel.value = VIEW_LEVELS.OVERVIEW
@@ -1165,12 +1118,12 @@ function renderClusters(clusterArray) {
   if (bigChungus) {
     bigChungus.x = centerX
     bigChungus.y = centerY
-    bigChungus.fixed = true // Keep it fixed in center
+    bigChungus.fixed = true
   }
 
   // Create orbiting rings based on cluster sizes
   const orbits = []
-  let currentRadius = 150 // Start with inner orbit
+  let currentRadius = 150
 
   // Group clusters by size ranges
   const sizeGroups = {}
@@ -1195,28 +1148,23 @@ function renderClusters(clusterArray) {
   orbits.forEach((orbit) => {
     const clusterCount = orbit.clusters.length
     orbit.clusters.forEach((cluster, i) => {
-      // Calculate base angle for even distribution
       const baseAngle = (i / clusterCount) * 2 * Math.PI
 
-      // Add some random offset to make it look more natural
       const angleOffset = (Math.random() - 0.5) * 0.2
       const radiusOffset = (Math.random() - 0.5) * 20
 
       const angle = baseAngle + angleOffset
       const radius = orbit.radius + radiusOffset
 
-      // Set cluster position
       cluster.x = centerX + Math.cos(angle) * radius
       cluster.y = centerY + Math.sin(angle) * radius
 
-      // Store orbital properties for animation
       cluster.orbitRadius = radius
       cluster.orbitAngle = angle
-      cluster.orbitSpeed = 0.001 / Math.sqrt(radius) // Slower speed for outer orbits
+      cluster.orbitSpeed = 0.001 / Math.sqrt(radius)
     })
   })
 
-  // Set up force simulation with modified forces
   if (simulation) simulation.stop()
 
   simulation = d3
@@ -1229,7 +1177,6 @@ function renderClusters(clusterArray) {
       otherClusters.forEach((cluster) => {
         if (!cluster.orbitAngle) return
 
-        // Update orbital position
         cluster.orbitAngle += cluster.orbitSpeed
         const targetX = centerX + Math.cos(cluster.orbitAngle) * cluster.orbitRadius
         const targetY = centerY + Math.sin(cluster.orbitAngle) * cluster.orbitRadius
@@ -1240,7 +1187,6 @@ function renderClusters(clusterArray) {
     })
     .force('center', d3.forceCenter(centerX, centerY).strength(0.01))
 
-  // Add particle effects for Big Chungus
   if (bigChungus) {
     const solarFlareCount = 24
     for (let i = 0; i < solarFlareCount; i++) {
@@ -1310,11 +1256,8 @@ function renderClusterDetail(cluster) {
   renderElements(items, 'node', relevantLinks)
 }
 
-/**
- * =========================
- * Events / interactions
- * =========================
- */
+// Events / interactions
+
 function handleElementMouseover(event, d) {
   hoveredElement.value = d
   tooltipPos.value = { x: event.pageX + 10, y: event.pageY - 10 }
@@ -1429,7 +1372,7 @@ function handleElementClick(event, d) {
   console.log('Element clicked:', d)
 }
 function handleElementDoubleClick(event, d) {
-  // Prevent interaction with Big Chungus due to performance concerns
+  // Prevent interaction with Big Chungus due to performance
   if (d.id === 'bigChungus') {
     console.log('Big Chungus contains too many items (70k+) to render effectively')
     return
@@ -1470,11 +1413,8 @@ function dragended(event, d) {
   d.fy = null
 }
 
-/**
- * =========================
- * Navigation
- * =========================
- */
+//Navigation
+
 function goBack() {
   if (breadcrumb.value.length > 0) {
     breadcrumb.value.pop()
@@ -1505,11 +1445,8 @@ function navigateToBreadcrumb(index) {
   resetView()
 }
 
-/**
- * =========================
- * Search
- * =========================
- */
+// Search
+
 function handleSearch() {
   if (!searchTerm.value.trim()) {
     searchResults.value = []
@@ -1554,11 +1491,7 @@ function focusOnNode(node) {
   }
 }
 
-/**
- * =========================
- * Zoom controls
- * =========================
- */
+// Zoom controls
 function zoomIn() {
   if (!svg || !zoom) return
   svg.transition().duration(300).call(zoom.scaleBy, 1.5)
@@ -1592,11 +1525,7 @@ function handleMinimapClick(event) {
     .call(zoom.transform, d3.zoomIdentity.translate(centerX, centerY).scale(zoomLevel.value))
 }
 
-/**
- * =========================
- * Initialization
- * =========================
- */
+// Initialize
 async function initializeVisualization(clusterPayload) {
   console.log('Initializing hierarchical visualization...')
   console.log('Clusters received:', clusterPayload.clusters.length)
@@ -1644,11 +1573,6 @@ async function initializeVisualization(clusterPayload) {
   console.log('Hierarchical visualization initialized')
 }
 
-/**
- * =========================
- * Lifecycle
- * =========================
- */
 onMounted(async () => {
   try {
     console.log('Fetching graph data...')

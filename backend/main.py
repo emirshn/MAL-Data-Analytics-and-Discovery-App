@@ -1510,45 +1510,27 @@ def search_anime(request: SearchRequest):
         print(f"Search error: {str(e)}")
         raise HTTPException(status_code=500, detail=f"Search failed: {str(e)}")
 
-# Multi Recommend
-from typing import List, Dict, Any
+
+import pandas as pd
 import numpy as np
 from sklearn.metrics.pairwise import cosine_similarity
-from collections import Counter
+import ast
+import gzip
+import pickle
+import os
+import json
+from typing import Dict, Any 
 
-
-def load_recommender():
-    global recommender
-    if recommender is not None:
-        return recommender
+class AnimeRecommender:
+    def __init__(self, model_data):
+        self.df = model_data['df']
+        self.features = model_data['features']
+        self.model_info = model_data.get('model_info', {})
+        self.setup_enhanced_genre_groups()
     
-    model_files = [
-        "anime_recommender_advanced.pkl.gz",
-        "anime_recommender_advanced.pkl", 
-        "dataset/anime_recommender_advanced.pkl.gz",
-        "dataset/anime_recommender_advanced.pkl"
-    ]
-    
-    for model_file in model_files:
-        if os.path.exists(model_file):
-            try:
-                if model_file.endswith('.gz'):
-                    with gzip.open(model_file, "rb") as f:
-                        model_data = pickle.load(f)
-                else:
-                    with open(model_file, "rb") as f:
-                        model_data = pickle.load(f)
-                
-                class SimpleRecommender:
-                    def __init__(self, model_data):
-                        self.df = model_data['df']
-                        self.features = model_data['features']
-                        self.model_info = model_data.get('model_info', {})
-                        self.setup_enhanced_genre_groups()
-                    
-                    def setup_enhanced_genre_groups(self) -> None:
-                        """Enhanced semantic genre groups with cross-genre bridge categories"""
-                        self.genre_groups = {
+    def setup_enhanced_genre_groups(self):
+        # Keep your existing genre_groups dictionary exactly as-is
+          self.genre_groups = {
                             # Core demographics and target audience
                             'shounen_action': ['Action', 'Adventure', 'Shounen', 'Super Power', 'Martial Arts', 'Tournament'],
                             'seinen_mature': ['Seinen', 'Psychological', 'Thriller', 'Adult Cast', 'Workplace'],
@@ -1690,205 +1672,10 @@ def load_recommender():
                             'artistic_expression': ['Art', 'Drama', 'Romance', 'Coming-of-Age']
                         }
     
-                    def parse_list(self, x):
-                        """Parse JSON-like strings to extract names"""
-                        if pd.isna(x) or x == "":
-                            return []
-                        try:
-                            if isinstance(x, str) and x.startswith("["):
-                                parsed = ast.literal_eval(x)
-                                if isinstance(parsed, list):
-                                    return [d.get("name", "") for d in parsed if isinstance(d, dict) and "name" in d]
-                            elif isinstance(x, list):
-                                return x
-                            return []
-                        except:
-                            return []
-                    
-                    def explain_similarity(self, source_anime, target_anime):
-                        """Generate explanation for why anime are similar"""
-                        source_genres = set(self.parse_list(source_anime.get('genres', '')))
-                        target_genres = set(self.parse_list(target_anime.get('genres', '')))
-                        source_themes = set(self.parse_list(source_anime.get('themes', '')))
-                        target_themes = set(self.parse_list(target_anime.get('themes', '')))
-                        
-                        explanation_parts = []
-                        
-                        # Genre analysis
-                        common_genres = source_genres & target_genres
-                        if common_genres:
-                            if len(common_genres) >= 3:
-                                explanation_parts.append(f"Strong genre overlap: {', '.join(list(common_genres)[:3])}")
-                            elif len(common_genres) == 2:
-                                explanation_parts.append(f"Shared genres: {', '.join(common_genres)}")
-                            else:
-                                explanation_parts.append(f"Same genre: {list(common_genres)[0]}")
-                        
-                        # Theme analysis
-                        common_themes = source_themes & target_themes
-                        if common_themes:
-                            if len(common_themes) >= 2:
-                                explanation_parts.append(f"Similar themes: {', '.join(list(common_themes)[:2])}")
-                            else:
-                                explanation_parts.append(f"Shared theme: {list(common_themes)[0]}")
-                        
-                        # Format analysis
-                        if source_anime.get('type') == target_anime.get('type'):
-                            if source_anime.get('type') in ['TV', 'Movie']:
-                                explanation_parts.append(f"Both {source_anime.get('type')} format")
-                        
-                        # Score tier analysis
-                        source_score = source_anime.get('score', 0)
-                        target_score = target_anime.get('score', 0)
-                        if pd.notna(source_score) and pd.notna(target_score):
-                            if source_score >= 8.5 and target_score >= 8.5:
-                                explanation_parts.append("Both highly acclaimed")
-                            elif source_score >= 8.0 and target_score >= 8.0:
-                                explanation_parts.append("Both well-rated")
-                            elif abs(source_score - target_score) <= 0.5:
-                                explanation_parts.append("Similar rating levels")
-                        
-                        # Year proximity
-                        source_year = source_anime.get('year')
-                        target_year = target_anime.get('year')
-                        if pd.notna(source_year) and pd.notna(target_year):
-                            year_diff = abs(int(source_year) - int(target_year))
-                            if year_diff <= 2:
-                                explanation_parts.append(f"Same period ({int(target_year)})")
-                            elif year_diff <= 5:
-                                explanation_parts.append("Similar era")
-                        
-                        # Studio connection  
-                        source_studios = set(self.parse_list(source_anime.get('studios', '')))
-                        target_studios = set(self.parse_list(target_anime.get('studios', '')))
-                        common_studios = source_studios & target_studios
-                        if common_studios:
-                            explanation_parts.append(f"Same studio: {list(common_studios)[0]}")
-                        
-                        # Combine explanation
-                        if explanation_parts:
-                            return "; ".join(explanation_parts[:4])  # Limit to 4 reasons
-                        else:
-                            return "Similar content profile and style"
-                    
-                    def recommend(self, anime_id, top_k=10, min_score=None, include_sequels=True, explain=False):
-                        from sklearn.metrics.pairwise import cosine_similarity
-                        import numpy as np
-                        
-                        if anime_id not in self.df['mal_id'].values:
-                            return {"error": "Anime not found"}
-                        
-                        source_idx = self.df[self.df['mal_id'] == anime_id].index[0]
-                        source_anime = self.df.iloc[source_idx]
-                        
-                        similarities = cosine_similarity([self.features[source_idx]], self.features)[0]
-                        
-                        # Fix NaN, inf, -inf values
-                        similarities = np.nan_to_num(similarities, nan=0.0, posinf=1.0, neginf=0.0)
-                        
-                        # Create results dataframe
-                        results_df = self.df.copy()
-                        results_df['similarity'] = similarities
-                        
-                        # Remove source anime
-                        results_df = results_df[results_df['mal_id'] != anime_id]
-                        
-                        # Apply min_score filter
-                        if min_score is not None:
-                            results_df = results_df[
-                                (results_df['score'] >= min_score) &
-                                results_df['score'].notna()
-                            ]
-                        
-                        # Remove sequels if requested
-                        if not include_sequels:
-                            source_title_words = source_anime['title'].lower().split()
-                            if len(source_title_words) > 0:
-                                main_title = source_title_words[0]
-                                if len(main_title) > 3:  # Only filter if title is meaningful
-                                    mask = ~results_df['title'].str.lower().str.contains(
-                                        main_title, na=False, regex=False
-                                    )
-                                    results_df = results_df[mask]
-                        
-                        # Ensure we have enough results
-                        if len(results_df) == 0:
-                            return {
-                                'source': {
-                                    'mal_id': int(source_anime['mal_id']),
-                                    'title': source_anime['title'],
-                                    'title_english': source_anime.get('title_english', ''),
-                                    'score': float(source_anime['score']) if pd.notna(source_anime['score']) else None
-                                },
-                                'recommendations': [],
-                                'filters_applied': {
-                                    'min_score': min_score,
-                                    'include_sequels': include_sequels,
-                                    'explain': explain
-                                }
-                            }
-                        
-                        # Get top recommendations
-                        sim_indices = results_df.nlargest(min(top_k, len(results_df)), 'similarity').index
-                        
-                        recommendations = []
-                        for idx in sim_indices:
-                            row = self.df.iloc[idx]
-                            similarity_val = results_df.loc[idx, 'similarity']
-                            
-                            # Ensure similarity is a valid float
-                            if not np.isfinite(similarity_val):
-                                similarity_val = 0.0
-                            
-                            synopsis = row.get('synopsis', '')
-                            synopsis = str(synopsis) if pd.notna(synopsis) else ''
-                            rec_item = {
-                                'mal_id': int(row['mal_id']),
-                                'title': row['title'],
-                                'title_english': row.get('title_english', ''),
-                                'score': float(row['score']) if pd.notna(row['score']) else None,
-                                'similarity': float(similarity_val),
-                                'type': row.get('type', ''),
-                                'episodes': int(row['episodes']) if pd.notna(row['episodes']) else None,
-                                'year': int(row['year']) if pd.notna(row['year']) else None,
-                                'synopsis': synopsis[:200] + "..." if synopsis and len(synopsis) > 200 else synopsis
-                            }
-                            
-                            # Add explanation if requested
-                            if explain:
-                                rec_item['explanation'] = self.explain_similarity(source_anime, row)
-                            
-                            recommendations.append(rec_item)
-                        
-                        return {
-                            'source': {
-                                'mal_id': int(source_anime['mal_id']),
-                                'title': source_anime['title'],
-                                'title_english': source_anime.get('title_english', ''),
-                                'score': float(source_anime['score']) if pd.notna(source_anime['score']) else None
-                            },
-                            'recommendations': recommendations,
-                            'filters_applied': {
-                                'min_score': min_score,
-                                'include_sequels': include_sequels,
-                                'explain': explain
-                            }
-                        }
-                
-                recommender = SimpleRecommender(model_data)
-                print(f"✓ Recommender model loaded from {model_file}")
-                return recommender
-                
-            except Exception as e:
-                print(f"Failed to load {model_file}: {e}")
-                continue
-    
-    # Add this to your load_recommender function or recommender class
     def parse_list(self, x):
         """Parse JSON-like strings to extract names"""
         if pd.isna(x) or x == "":
             return []
-        
         try:
             if isinstance(x, str) and x.startswith("["):
                 parsed = ast.literal_eval(x)
@@ -1897,328 +1684,317 @@ def load_recommender():
             elif isinstance(x, list):
                 return x
             return []
-        except (ValueError, SyntaxError):
+        except:
             return []
-
-    # Make sure recommender has the expanded genre_groups from earlier
-    recommender.parse_list = parse_list
-    print("Warning: No recommender model found")
-    return None
-
-def detect_bridge_content(candidate_row, source_anime_list, recommender):
-    """Detect if candidate bridges multiple source anime themes using genre groups"""
     
-    # Only works for pairs currently
-    if len(source_anime_list) != 2:
-        return 0.0
-    
-    # Get candidate tags
-    candidate_genres = set(recommender.parse_list(candidate_row.get('genres', '')))
-    candidate_themes = set(recommender.parse_list(candidate_row.get('themes', '')))
-    candidate_tags = candidate_genres.union(candidate_themes)
-    
-    if not candidate_tags:  # No tags to analyze
-        return 0.0
-    
-    # Get source tags
-    source_tag_sets = []
-    for anime in source_anime_list:
-        source_genres = set(recommender.parse_list(anime['data'].get('genres', '')))
-        source_themes = set(recommender.parse_list(anime['data'].get('themes', '')))
-        source_tags = source_genres.union(source_themes)
-        source_tag_sets.append(source_tags)
-    
-    source1_tags, source2_tags = source_tag_sets
-    
-    # Find which genre groups each source belongs to
-    source1_groups = set()
-    source2_groups = set()
-    candidate_groups = set()
-    
-    for group_name, group_tags in recommender.genre_groups.items():
-        # Check if source 1 matches this group
-        if any(tag in source1_tags for tag in group_tags):
-            source1_groups.add(group_name)
-        
-        # Check if source 2 matches this group
-        if any(tag in source2_tags for tag in group_tags):
-            source2_groups.add(group_name)
-        
-        # Check if candidate matches this group
-        if any(tag in candidate_tags for tag in group_tags):
-            candidate_groups.add(group_name)
-    
-    # Calculate bridge potential
-    # 1. Direct tag overlap with each source
-    overlap1 = len(candidate_tags.intersection(source1_tags))
-    overlap2 = len(candidate_tags.intersection(source2_tags))
-    
-    # Must have meaningful overlap with BOTH sources to be a bridge
-    if overlap1 < 1 or overlap2 < 1:
-        return 0.0
-    
-    # 2. Check if sources are different enough to need bridging
-    shared_source_groups = source1_groups.intersection(source2_groups)
-    total_source_groups = source1_groups.union(source2_groups)
-    
-    # If sources share too many groups, they don't need bridging
-    if len(total_source_groups) == 0:
-        source_dissimilarity = 0.0
-    else:
-        source_dissimilarity = 1.0 - (len(shared_source_groups) / len(total_source_groups))
-    
-    # Sources must be sufficiently different
-    if source_dissimilarity < 0.3:
-        return 0.0
-    
-    # 3. Check if candidate connects the different groups
-    connects_source1 = len(candidate_groups.intersection(source1_groups))
-    connects_source2 = len(candidate_groups.intersection(source2_groups))
-    
-    # Bridge scoring
-    bridge_score = 0.0
-    
-    # Basic bridge: overlaps with both sources
-    basic_bridge = (overlap1 + overlap2) / (len(source1_tags) + len(source2_tags))
-    bridge_score += basic_bridge * 0.3
-    
-    # Group bridge: connects different genre groups
-    if connects_source1 > 0 and connects_source2 > 0:
-        group_connection_strength = (connects_source1 + connects_source2) / len(candidate_groups) if candidate_groups else 0
-        bridge_score += group_connection_strength * 0.4 * source_dissimilarity
-    
-    # Look for specialized bridge categories that explicitly connect the source types
-    bridge_categories = []
-    for group_name in candidate_groups:
-        # Check if this is a bridge category (contains elements from both sources)
-        group_tags = set(recommender.genre_groups[group_name])
-        if (any(tag in group_tags for tag in source1_tags) and 
-            any(tag in group_tags for tag in source2_tags)):
-            bridge_categories.append(group_name)
-    
-    # Bonus for explicit bridge categories
-    if bridge_categories:
-        bridge_bonus = min(0.3, len(bridge_categories) * 0.1)
-        bridge_score += bridge_bonus
-    
-    # Apply source dissimilarity multiplier
-    bridge_score *= source_dissimilarity
-    
-    # Cap the maximum bridge score
-    return min(bridge_score, 0.5)
-
-def calculate_genre_group_bonus(candidate_row, source_anime_list, recommender):
-    """Calculate bonus for genre group overlaps and thematic bridges"""
-    
-    candidate_genres = set(recommender.parse_list(candidate_row.get('genres', '')))
-    candidate_themes = set(recommender.parse_list(candidate_row.get('themes', '')))
-    candidate_tags = candidate_genres.union(candidate_themes)
-    
-    if not candidate_tags:
-        return 0.0
-    
-    # Find genre groups for candidate
-    candidate_groups = set()
-    for group_name, group_tags in recommender.genre_groups.items():
-        if any(tag in candidate_tags for tag in group_tags):
-            candidate_groups.add(group_name)
-    
-    total_bonus = 0.0
-    source_group_sets = []
-    
-    # Get genre groups for each source
-    for anime in source_anime_list:
-        source_genres = set(recommender.parse_list(anime['data'].get('genres', '')))
-        source_themes = set(recommender.parse_list(anime['data'].get('themes', '')))
-        source_tags = source_genres.union(source_themes)
-        
-        source_groups = set()
-        for group_name, group_tags in recommender.genre_groups.items():
-            if any(tag in source_tags for tag in group_tags):
-                source_groups.add(group_name)
-        
-        source_group_sets.append(source_groups)
-        
-        # Direct group overlap bonus
-        group_overlap = len(candidate_groups.intersection(source_groups))
-        if group_overlap > 0:
-            total_bonus += group_overlap * 0.1
-    
-    # Cross-genre bridge bonus for different source types
-    if len(source_anime_list) == 2:
-        source1_groups, source2_groups = source_group_sets
-        
-        # Check if sources are different enough to benefit from bridging
-        shared_groups = source1_groups.intersection(source2_groups)
-        total_groups = source1_groups.union(source2_groups)
-        
-        if len(total_groups) > 0:
-            dissimilarity = 1.0 - (len(shared_groups) / len(total_groups))
-            
-            # If sources are different, reward candidates that connect them
-            if dissimilarity > 0.4:  # Sources are sufficiently different
-                connects_both = (len(candidate_groups.intersection(source1_groups)) > 0 and 
-                               len(candidate_groups.intersection(source2_groups)) > 0)
-                
-                if connects_both:
-                    bridge_strength = min(len(candidate_groups.intersection(source1_groups)),
-                                        len(candidate_groups.intersection(source2_groups)))
-                    total_bonus += bridge_strength * 0.3 * dissimilarity
-    
-    return min(total_bonus, 0.6)  # Cap bonus
-
-@app.post("/anime/multi-recommend")
-def get_multi_anime_recommendations(
-    request: Dict[str, Any],
-    top_k: int = 20,
-    min_score: float = None,
-    include_sequels: bool = True,
-    explain: bool = False,
-    diversity_weight: float = 0.0
-):
-    """
-    Generate balanced recommendations using equal weighting approach
-    """
-    anime_ids = request.get('anime_ids', [])
-    top_k = request.get('top_k', top_k)
-    min_score = request.get('min_score', min_score)
-    include_sequels = request.get('include_sequels', include_sequels)
-    explain = request.get('explain', explain)
-    diversity_weight = request.get('diversity_weight', diversity_weight)
-    
-    if not anime_ids:
-        return {"error": "No anime IDs provided"}
-    
-    if len(anime_ids) > 20:
-        return {"error": "Too many anime selected (max 20)"}
-    
-    recommender = load_recommender()
-    if not recommender:
-        return {"error": "Recommender not available"}
-
-    def safe_float(value):
-        if value is None:
-            return None
-        try:
-            if pd.isna(value):
-                return None
-            float_val = float(value)
-            if not np.isfinite(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError, OverflowError):
-            return None
-    
-    def safe_int(value):
+    def safe_convert(self, value, convert_type=float):
+        """Safely convert values handling NaN and invalid data"""
         if value is None or pd.isna(value):
             return None
         try:
-            return int(value)
+            result = convert_type(value)
+            if convert_type == float and not np.isfinite(result):
+                return None
+            return result
         except (ValueError, TypeError, OverflowError):
             return None
-
-    def is_sequel_or_related(row, selection_rows):
-        """
-        Check if `row` anime is a sequel or related to any anime in `selection_rows`.
-        Safe for pandas.Series input.
-        """
-        try:
-            # Convert row to dict if it's a Series
-            if isinstance(row, pd.Series):
-                row_dict = row.to_dict()
+    
+    def get_anime_tags(self, anime_data):
+        """Get combined genres and themes as tags"""
+        genres = set(self.parse_list(anime_data.get('genres', '')))
+        themes = set(self.parse_list(anime_data.get('themes', '')))
+        return genres.union(themes)
+    
+    def get_genre_groups_for_tags(self, tags):
+        """Find which genre groups match the given tags"""
+        groups = set()
+        for group_name, group_tags in self.genre_groups.items():
+            if any(tag in tags for tag in group_tags):
+                groups.add(group_name)
+        return groups
+    
+    def calculate_genre_bonus(self, candidate_row, source_anime_list):
+        """Calculate genre group overlap bonus (replaces calculate_genre_group_bonus)"""
+        candidate_tags = self.get_anime_tags(candidate_row)
+        if not candidate_tags:
+            return 0.0
+        
+        candidate_groups = self.get_genre_groups_for_tags(candidate_tags)
+        total_bonus = 0.0
+        source_group_sets = []
+        
+        for anime in source_anime_list:
+            anime_data = anime['data'] if isinstance(anime, dict) and 'data' in anime else anime
+            source_tags = self.get_anime_tags(anime_data)
+            source_groups = self.get_genre_groups_for_tags(source_tags)
+            source_group_sets.append(source_groups)
+            
+            # Direct group overlap bonus
+            group_overlap = len(candidate_groups.intersection(source_groups))
+            if group_overlap > 0:
+                total_bonus += group_overlap * 0.1
+        
+        # Bridge bonus for pairs with different sources
+        if len(source_anime_list) == 2:
+            source1_groups, source2_groups = source_group_sets
+            shared_groups = source1_groups.intersection(source2_groups)
+            total_groups = source1_groups.union(source2_groups)
+            
+            if len(total_groups) > 0:
+                dissimilarity = 1.0 - (len(shared_groups) / len(total_groups))
+                if dissimilarity > 0.4:
+                    connects_both = (len(candidate_groups.intersection(source1_groups)) > 0 and 
+                                   len(candidate_groups.intersection(source2_groups)) > 0)
+                    
+                    if connects_both:
+                        bridge_strength = min(len(candidate_groups.intersection(source1_groups)),
+                                            len(candidate_groups.intersection(source2_groups)))
+                        total_bonus += bridge_strength * 0.3 * dissimilarity
+        
+        return min(total_bonus, 0.6)  # Cap bonus
+    
+    def generate_explanation(self, candidate_row, source_anime_list, similarities=None):
+        """Generate explanations (combines explain_similarity and generate_detailed_explanation)"""
+        explanation_parts = []
+        
+        candidate_tags = self.get_anime_tags(candidate_row)
+        candidate_studios = set(self.parse_list(candidate_row.get('studios', '')))
+        candidate_year = candidate_row.get('year')
+        candidate_score = candidate_row.get('score')
+        candidate_type = candidate_row.get('type')
+        
+        if len(source_anime_list) > 1:
+            # Multi-anime explanations
+            source_matches = []
+            all_common_tags = set()
+            
+            for i, anime in enumerate(source_anime_list):
+                source_data = anime['data'] if isinstance(anime, dict) and 'data' in anime else anime
+                source_tags = self.get_anime_tags(source_data)
+                source_title = source_data.get('title', 'Unknown')
+                
+                common_tags = candidate_tags & source_tags
+                
+                if similarities and i < len(similarities) and similarities[i] > 0.2:
+                    match_reasons = []
+                    
+                    if common_tags:
+                        all_common_tags.update(common_tags)
+                        if len(common_tags) >= 2:
+                            match_reasons.append(f"shares {', '.join(list(common_tags)[:2])}")
+                        else:
+                            match_reasons.append(f"shares {list(common_tags)[0]}")
+                    
+                    # Check other similarities
+                    source_studios = set(self.parse_list(source_data.get('studios', '')))
+                    if candidate_studios & source_studios:
+                        match_reasons.append("same studio")
+                    
+                    source_year = source_data.get('year')
+                    if (pd.notna(candidate_year) and pd.notna(source_year) and 
+                        abs(int(candidate_year) - int(source_year)) <= 3):
+                        match_reasons.append("similar era")
+                    
+                    if match_reasons:
+                        source_matches.append(f"matches {source_title[:20]} ({', '.join(match_reasons[:2])})")
+            
+            if len(source_matches) >= 2:
+                explanation_parts.append(f"Appeals to multiple selections: {'; '.join(source_matches[:2])}")
+            elif source_matches:
+                explanation_parts.append(source_matches[0])
+            
+            if len(all_common_tags) >= 2:
+                explanation_parts.append(f"Bridges {', '.join(list(all_common_tags)[:3])} themes across your selection")
+            elif all_common_tags:
+                explanation_parts.append(f"Common {list(all_common_tags)[0]} elements")
+        else:
+            # Single anime explanations
+            source_data = source_anime_list[0]['data'] if source_anime_list else {}
+            source_tags = self.get_anime_tags(source_data)
+            source_studios = set(self.parse_list(source_data.get('studios', '')))
+            
+            # Genre/theme analysis
+            common_tags = candidate_tags & source_tags
+            if common_tags:
+                if len(common_tags) >= 3:
+                    explanation_parts.append(f"Shares {len(common_tags)} themes: {', '.join(list(common_tags)[:3])}")
+                elif len(common_tags) == 2:
+                    explanation_parts.append(f"Common themes: {', '.join(common_tags)}")
+                else:
+                    explanation_parts.append(f"Same {list(common_tags)[0]} theme")
+            
+            # Other connections
+            common_studios = candidate_studios & source_studios
+            if common_studios:
+                explanation_parts.append(f"Same studio: {list(common_studios)[0]}")
+            
+            # Year proximity
+            source_year = source_data.get('year')
+            if pd.notna(candidate_year) and pd.notna(source_year):
+                year_diff = abs(int(candidate_year) - int(source_year))
+                if year_diff <= 2:
+                    explanation_parts.append(f"Same period ({int(candidate_year)})")
+                elif year_diff <= 5:
+                    explanation_parts.append("Similar time period")
+            
+            # Score tier analysis
+            source_score = source_data.get('score')
+            if pd.notna(candidate_score) and pd.notna(source_score):
+                if candidate_score >= 8.5 and source_score >= 8.5:
+                    explanation_parts.append("Both highly acclaimed (8.5+)")
+                elif candidate_score >= 8.0 and source_score >= 8.0:
+                    explanation_parts.append("Both well-rated (8.0+)")
+                elif abs(candidate_score - source_score) <= 0.5:
+                    explanation_parts.append("Similar rating level")
+            
+            # Format similarity
+            source_type = source_data.get('type')
+            if candidate_type == source_type and candidate_type in ['Movie', 'TV', 'OVA']:
+                explanation_parts.append(f"Both {candidate_type} format")
+        
+        return "; ".join(explanation_parts) if explanation_parts else "Similar content profile and viewing appeal"
+    
+    def is_sequel_or_related(self, candidate_row, source_anime_list):
+        """Check if candidate is a sequel/related to any source anime"""
+        candidate_title = str(candidate_row.get("title", "")).lower()
+        
+        for anime in source_anime_list:
+            if isinstance(anime, dict) and 'data' in anime:
+                source_title = str(anime['data'].get("title", "")).lower()
             else:
-                row_dict = row
-
-            # Parse relations of candidate
-            relations_data = row_dict.get("relations", "[]")
-            if isinstance(relations_data, str):
-                try:
-                    relations_data = json.loads(relations_data)
-                except json.JSONDecodeError:
-                    relations_data = []
-
-            related_ids = set()
-            for rel in relations_data:
-                entries = rel.get("entry", [])
-                for entry in entries:
-                    related_ids.add(entry.get("mal_id"))
-
-            # Compare with selected anime mal_ids and relations
-            for anime in selection_rows:
-                anime_data = anime['data']
-                if isinstance(anime_data, pd.Series):
-                    anime_data = anime_data.to_dict()
-
-                # Direct mal_id match via relations
-                if anime['id'] in related_ids:
+                source_title = str(anime.get("title", "")).lower()
+            
+            candidate_words = candidate_title.split()
+            source_words = source_title.split()
+            
+            if len(candidate_words) > 0 and len(source_words) > 0:
+                candidate_main = candidate_words[0]
+                source_main = source_words[0]
+                
+                if (len(candidate_main) > 3 and len(source_main) > 3 and
+                    (candidate_main == source_main or candidate_main in source_title or source_main in candidate_title)):
                     return True
-
-                # Compare with the selected anime's relations
-                sel_relations = anime_data.get("relations", "[]")
-                if isinstance(sel_relations, str):
-                    try:
-                        sel_relations = json.loads(sel_relations)
-                    except json.JSONDecodeError:
-                        sel_relations = []
-
-                for rel in sel_relations:
-                    for entry in rel.get("entry", []):
-                        if entry.get("mal_id") == row_dict.get("mal_id"):
-                            return True
-
-            return False
-
-        except Exception:
-            # Fallback: use title-based matching
-            row_title = str(row.get("title") if isinstance(row, dict) else row["title"])
-            for anime in selection_rows:
-                anime_data = anime['data']
-                anime_title = str(anime_data.get("title") if isinstance(anime_data, dict) else anime_data["title"])
-                if old_title_match(row_title, anime_title):
+        return False
+    
+    def get_image_urls(self, mal_id, anime_df):
+        """Extract image URLs from anime dataframe"""
+        anime_row = anime_df[anime_df['mal_id'] == mal_id]
+        if anime_row.empty:
+            return None, None
+        
+        images_data = anime_row.iloc[0].get('images')
+        if pd.notna(images_data):
+            try:
+                images_dict = json.loads(images_data) if isinstance(images_data, str) else images_data
+                
+                if isinstance(images_dict, dict):
+                    for format_type in ['webp', 'jpg']:
+                        if format_type in images_dict and isinstance(images_dict[format_type], dict):
+                            image_url = (images_dict[format_type].get('large_image_url') or 
+                                       images_dict[format_type].get('image_url'))
+                            thumbnail_url = images_dict[format_type].get('small_image_url')
+                            return image_url, thumbnail_url
+            except:
+                pass
+        return None, None
+    
+    def is_sequel_or_related_simple(self, candidate_row, source_anime_list):
+        """Simple sequel detection using first word matching"""
+        candidate_title = str(candidate_row.get('title', '')).lower()
+        
+        for source_anime in source_anime_list:
+            if isinstance(source_anime, dict) and 'data' in source_anime:
+                source_title = str(source_anime['data'].get('title', '')).lower()
+            else:
+                source_title = str(source_anime.get('title', '')).lower()
+            
+            source_words = source_title.split()
+            if source_words and len(source_words[0]) > 3:
+                if source_words[0] in candidate_title:
                     return True
-            return False
-
-    def old_title_match(title1, title2):
-        title1_clean = re.sub(r'[^\w\s]', '', str(title1).lower().strip())
-        title2_clean = re.sub(r'[^\w\s]', '', str(title2).lower().strip())
-        if title1_clean == title2_clean:
-            return True
-        
-        sequel_patterns = [
-            r'\b(season|series|part|arc|chapter|saga|movie|ova|special|tv|ona|sequel|prequel)\b',
-            r'\b(2nd|3rd|second|third|fourth|final|last|next|new|recap|memorial)\b',
-            r'\b(vs?|versus|and|&|x|plus|\+)\b',
-            r'\d+',
-            r'\b(hen|jidai|ki|senki|kai|tachi|no|ga|wo|ni|de|to|da)\b'
-        ]
-        
-        base1, base2 = title1_clean, title2_clean
-        for pattern in sequel_patterns:
-            base1 = re.sub(pattern, '', base1, flags=re.IGNORECASE).strip()
-            base2 = re.sub(pattern, '', base2, flags=re.IGNORECASE).strip()
-        
-        base1, base2 = ' '.join(base1.split()), ' '.join(base2.split())
-        if len(base1) < 2 or len(base2) < 2:
-            return False
-        if base1 in base2 or base2 in base1:
-            return True
-        words1, words2 = set(base1.split()), set(base2.split())
-        if len(words1) <= 3 and len(words2) <= 3:
-            overlap = len(words1.intersection(words2))
-            if overlap >= min(len(words1), len(words2)) * 0.8:
-                return True
         return False
 
-    try:
-        # Get valid anime from selection
+    def recommend(self, anime_id, top_k=10, min_score=None, include_sequels=True, explain=False):
+        """Single anime recommendation"""
+        if anime_id not in self.df['mal_id'].values:
+            return {"error": "Anime not found"}
+        
+        source_idx = self.df[self.df['mal_id'] == anime_id].index[0]
+        source_anime = self.df.iloc[source_idx]
+        
+        similarities = cosine_similarity([self.features[source_idx]], self.features)[0]
+        similarities = np.nan_to_num(similarities, nan=0.0, posinf=1.0, neginf=0.0)
+        
+        # Filter candidates
+        results_df = self.df.copy()
+        results_df['similarity'] = similarities
+        results_df = results_df[results_df['mal_id'] != anime_id]  # Remove source
+        
+        if min_score is not None:
+            results_df = results_df[(results_df['score'] >= min_score) & results_df['score'].notna()]
+        
+        if not include_sequels:
+            source_title_words = source_anime['title'].lower().split()
+            if source_title_words and len(source_title_words[0]) > 3:
+                mask = ~results_df['title'].str.lower().str.contains(source_title_words[0], na=False, regex=False)
+                results_df = results_df[mask]
+        
+        if len(results_df) == 0:
+            return {
+                'source': self._format_source_anime(source_anime),
+                'recommendations': [],
+                'filters_applied': {'min_score': min_score, 'include_sequels': include_sequels, 'explain': explain}
+            }
+        
+        # Get top recommendations
+        sim_indices = results_df.nlargest(min(top_k, len(results_df)), 'similarity').index
+        
+        recommendations = []
+        for idx in sim_indices:
+            row = self.df.iloc[idx]
+            similarity_val = results_df.loc[idx, 'similarity']
+            
+            if not np.isfinite(similarity_val):
+                similarity_val = 0.0
+            
+            synopsis = str(row.get('synopsis', '')) if pd.notna(row.get('synopsis')) else ''
+            rec_item = {
+                'mal_id': self.safe_convert(row['mal_id'], int),
+                'title': str(row['title']),
+                'title_english': str(row.get('title_english', '')),
+                'score': self.safe_convert(row['score']),
+                'similarity': float(similarity_val),
+                'type': str(row.get('type', '')),
+                'episodes': self.safe_convert(row['episodes'], int),
+                'year': self.safe_convert(row['year'], int),
+                'synopsis': synopsis[:200] + "..." if synopsis and len(synopsis) > 200 else synopsis
+            }
+            
+            if explain:
+                rec_item['explanation'] = self.generate_explanation(row, [{'data': source_anime}])
+            
+            recommendations.append(rec_item)
+        
+        return {
+            'source': self._format_source_anime(source_anime),
+            'recommendations': recommendations,
+            'filters_applied': {'min_score': min_score, 'include_sequels': include_sequels, 'explain': explain}
+        }
+    
+    def multi_recommend(self, anime_ids, top_k=20, min_score=None, include_sequels=True, explain=False, diversity_weight=0.0):
+        """Multi-anime recommendation"""
+        if not anime_ids or len(anime_ids) > 20:
+            return {"error": "Invalid anime IDs (must be 1-20)"}
+        print(f"Multi-recommend method: include_sequels={include_sequels}")  # Debug log
+        # Get valid anime
         valid_anime = []
         for anime_id in anime_ids:
-            if anime_id in recommender.df['mal_id'].values:
-                source_idx = recommender.df[recommender.df['mal_id'] == anime_id].index[0]
+            if anime_id in self.df['mal_id'].values:
+                source_idx = self.df[self.df['mal_id'] == anime_id].index[0]
                 valid_anime.append({
                     'id': anime_id,
-                    'data': recommender.df.iloc[source_idx],
-                    'features': recommender.features[source_idx],
+                    'data': self.df.iloc[source_idx],
+                    'features': self.features[source_idx],
                     'index': source_idx
                 })
         
@@ -2227,41 +2003,51 @@ def get_multi_anime_recommendations(
         
         selected_mal_ids = [anime['id'] for anime in valid_anime]
         
-        # Strategy: Get separate recommendation lists for each source anime, then merge fairly
+        # Get candidate recommendations from each source
         individual_recs = {}
         
         for i, source_anime in enumerate(valid_anime):
-            # Get similarities for this specific source
-            similarities = cosine_similarity([source_anime['features']], recommender.features)[0]
+            similarities = cosine_similarity([source_anime['features']], self.features)[0]
             similarities = np.nan_to_num(similarities, nan=0.0, posinf=1.0, neginf=0.0)
             
-            # Get top candidates for this source
             candidate_indices = np.argsort(similarities)[::-1]
             
             rank = 0
             for idx in candidate_indices:
-                if rank >= top_k * 3:  # Limit candidates per source
+                if rank >= top_k * 3:
                     break
-                    
-                mal_id = recommender.df.iloc[idx]['mal_id']
                 
-                # Skip self
+                mal_id = self.df.iloc[idx]['mal_id']
+                
                 if mal_id in selected_mal_ids:
                     continue
                 
-                # Skip if doesn't meet score requirement
-                row = recommender.df.iloc[idx]
+                row = self.df.iloc[idx]
                 if min_score is not None and (pd.isna(row['score']) or row['score'] < min_score):
                     continue
                 
-                # Skip sequels if requested
+                # Replace the sequel checking section in multi_recommend with this:
                 if not include_sequels:
-                    if is_sequel_or_related(row, valid_anime):
+                    print("SEQUEL FILTERING IS ACTIVE")
+                    # Use exact same logic as single recommend
+                    is_related = False
+                    candidate_title = str(row.get('title', '')).lower()
+                    
+                    for source in valid_anime:
+                        source_anime = source['data']
+                        source_title_words = str(source_anime.get('title', '')).lower().split()
+                        
+                        if source_title_words and len(source_title_words[0]) > 3:
+                            # Check if candidate title contains the first word of source title
+                            if source_title_words[0] in candidate_title:
+                                is_related = True
+                                break
+                    
+                    if is_related:
                         continue
-                
+                else:
+                    print("SEQUEL FILTERING IS DISABLED - should see all results")
                 similarity_score = similarities[idx]
-                
-                # Only include if similarity is reasonable (avoid noise)
                 if similarity_score < 0.15:
                     continue
                 
@@ -2270,102 +2056,79 @@ def get_multi_anime_recommendations(
                         'data': row,
                         'index': idx,
                         'source_similarities': {},
-                        'source_ranks': {},
-                        'best_similarity': 0,
-                        'total_score': 0
+                        'source_ranks': {}
                     }
                 
                 individual_recs[mal_id]['source_similarities'][i] = similarity_score
                 individual_recs[mal_id]['source_ranks'][i] = rank
-                individual_recs[mal_id]['best_similarity'] = max(individual_recs[mal_id]['best_similarity'], similarity_score)
-                
                 rank += 1
         
-        # Now score each candidate fairly
+        # Score and rank final candidates
         final_candidates = []
-
+        
         for mal_id, rec_data in individual_recs.items():
-                similarities = []
-                ranks = []
-                source_count = len(valid_anime)
-                
-                for i in range(source_count):
-                    sim = rec_data['source_similarities'].get(i, 0)
-                    rank = rec_data['source_ranks'].get(i, 999)
-                    similarities.append(sim)
-                    ranks.append(rank)
-                
-                # Calculate base metrics
-                avg_similarity = np.mean(similarities)
-                min_similarity = min(similarities)
-                max_similarity = max(similarities)
-                
-                # Calculate how many sources recommend this anime significantly
-                strong_recommendations = sum(1 for s in similarities if s > 0.25)
-                
-                # NEW: Calculate genre group bonus
-                genre_bonus = calculate_genre_group_bonus(rec_data['data'], valid_anime, recommender)
-                
-                # Enhanced scoring with genre awareness
-                if len(valid_anime) == 2:
-                    # For pairs: Balance direct similarity with genre bridging
-                    base_score = avg_similarity * 1.2
-                    
-                    # Boost for genre connections
-                    if genre_bonus > 0.3:  # Strong thematic connection
-                        final_score = base_score * 1.5 + genre_bonus
-                    elif genre_bonus > 0.15:  # Moderate connection
-                        final_score = base_score * 1.3 + genre_bonus
-                    elif min_similarity > 0.2:  # Direct similarity to both
-                        final_score = base_score * 1.4
-                    else:
-                        # Fallback: favor the stronger connection with genre boost
-                        final_score = (max_similarity * 0.8 + avg_similarity * 0.5) + genre_bonus
+            similarities = []
+            for i in range(len(valid_anime)):
+                similarities.append(rec_data['source_similarities'].get(i, 0))
+            
+            avg_similarity = np.mean(similarities)
+            min_similarity = min(similarities)
+            max_similarity = max(similarities)
+            strong_recommendations = sum(1 for s in similarities if s > 0.25)
+            
+            # Calculate genre bonus
+            genre_bonus = self.calculate_genre_bonus(rec_data['data'], valid_anime)
+            
+            # Enhanced scoring
+            if len(valid_anime) == 2:
+                base_score = avg_similarity * 1.2
+                if genre_bonus > 0.3:
+                    final_score = base_score * 1.5 + genre_bonus
+                elif genre_bonus > 0.15:
+                    final_score = base_score * 1.3 + genre_bonus
+                elif min_similarity > 0.2:
+                    final_score = base_score * 1.4
                 else:
-                    # Multiple sources: use proportional representation with genre boost
-                    proportion_recommending = strong_recommendations / len(valid_anime)
-                    base_score = avg_similarity * (0.7 + 0.5 * proportion_recommending)
-                    final_score = base_score + genre_bonus
-                            
-                final_candidates.append({
-                    'mal_id': mal_id,
-                    'final_score': final_score,
-                    'avg_similarity': avg_similarity,
-                    'min_similarity': min_similarity,
-                    'max_similarity': max_similarity,
-                    'similarities': similarities,
-                    'strong_recommendations': strong_recommendations,
-                    'genre_bonus': genre_bonus,  
-                    'data': rec_data['data'],
-                    'index': rec_data['index']
-                }) 
-        # Sort by final score
+                    final_score = (max_similarity * 0.8 + avg_similarity * 0.5) + genre_bonus
+            else:
+                proportion_recommending = strong_recommendations / len(valid_anime)
+                base_score = avg_similarity * (0.7 + 0.5 * proportion_recommending)
+                final_score = base_score + genre_bonus
+            
+            final_candidates.append({
+                'mal_id': mal_id,
+                'final_score': final_score,
+                'avg_similarity': avg_similarity,
+                'min_similarity': min_similarity,
+                'max_similarity': max_similarity,
+                'similarities': similarities,
+                'strong_recommendations': strong_recommendations,
+                'genre_bonus': genre_bonus,
+                'data': rec_data['data'],
+                'index': rec_data['index']
+            })
+        
+        # Sort and balance results
         final_candidates.sort(key=lambda x: x['final_score'], reverse=True)
-
+        
+        # Apply bridge content balancing for multiple sources
         if len(valid_anime) >= 2:
-            # Separate bridge content from regular recommendations
-            bridge_candidates = [c for c in final_candidates if c['genre_bonus'] > 0.2]  # Use genre_bonus
+            bridge_candidates = [c for c in final_candidates if c['genre_bonus'] > 0.2]
             regular_candidates = [c for c in final_candidates if c['genre_bonus'] <= 0.2]
             
-            # Take top bridge content first (up to 40% of results)
             bridge_count = min(len(bridge_candidates), int(top_k * 0.4))
             selected_recommendations = bridge_candidates[:bridge_count]
             
-            # Fill remaining slots proportionally from each source
             remaining_slots = top_k - len(selected_recommendations)
-            
             if remaining_slots > 0:
-                # Group remaining candidates by their strongest source
                 source_groups = {i: [] for i in range(len(valid_anime))}
                 taken_ids = {c['mal_id'] for c in selected_recommendations}
                 
                 for candidate in regular_candidates:
                     if candidate['mal_id'] not in taken_ids:
-                        # Find which source this is most similar to
                         best_source_idx = candidate['similarities'].index(max(candidate['similarities']))
                         source_groups[best_source_idx].append(candidate)
                 
-                # Take proportionally from each source
                 per_source = max(1, remaining_slots // len(valid_anime))
                 remainder = remaining_slots % len(valid_anime)
                 
@@ -2373,138 +2136,54 @@ def get_multi_anime_recommendations(
                     take_count = per_source + (1 if i < remainder else 0)
                     selected_recommendations.extend(candidates[:take_count])
             
-            # Update final_candidates to use our balanced selection
             final_candidates = selected_recommendations[:top_k]
         
-        # Apply diversity penalty if requested
+        # Apply diversity penalty
         if diversity_weight > 0:
             for candidate in final_candidates:
                 penalty = 0
                 for anime in valid_anime:
-                    if is_sequel_or_related(candidate['data'], [anime]):
+                    if self.is_sequel_or_related(candidate['data'], [anime]):
                         penalty += diversity_weight
-                
                 candidate['final_score'] = max(0, candidate['final_score'] - penalty)
             
-            # Re-sort after penalty
             final_candidates.sort(key=lambda x: x['final_score'], reverse=True)
         
-        # Build recommendations
+        # Build response
         recommendations = []
         for candidate in final_candidates[:top_k]:
             row = candidate['data']
+            synopsis = str(row.get('synopsis', '')) if pd.notna(row.get('synopsis')) else ''
             
-            synopsis = row.get('synopsis', '')
-            synopsis = str(synopsis) if pd.notna(synopsis) else ''
-            
-            # Get image URL
-            image_url = None
-            thumbnail_url = None
-            anime_row = anime_df[anime_df['mal_id'] == row['mal_id']]
-            if not anime_row.empty:
-                images_data = anime_row.iloc[0].get('images')
-                if pd.notna(images_data):
-                    try:
-                        if isinstance(images_data, str):
-                            images_dict = json.loads(images_data)
-                        else:
-                            images_dict = images_data
-                        
-                        if isinstance(images_dict, dict):
-                            if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
-                                image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
-                                thumbnail_url = images_dict['webp'].get('small_image_url')
-                            elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
-                                image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
-                                thumbnail_url = images_dict['jpg'].get('small_image_url')
-                    except:
-                        pass
-
             rec_item = {
-                'mal_id': safe_int(row['mal_id']),
+                'mal_id': self.safe_convert(row['mal_id'], int),
                 'title': str(row['title']),
                 'title_english': str(row.get('title_english', '')),
-                'score': safe_float(row['score']),
-                'similarity': safe_float(candidate['final_score']),
-                'avg_similarity': safe_float(candidate['avg_similarity']),
-                'min_similarity': safe_float(candidate['min_similarity']),
-                'max_similarity': safe_float(candidate['max_similarity']),
-                'individual_similarities': [safe_float(s) for s in candidate['similarities']],
+                'score': self.safe_convert(row['score']),
+                'similarity': self.safe_convert(candidate['final_score']),
+                'avg_similarity': self.safe_convert(candidate['avg_similarity']),
+                'min_similarity': self.safe_convert(candidate['min_similarity']),
+                'max_similarity': self.safe_convert(candidate['max_similarity']),
+                'individual_similarities': [self.safe_convert(s) for s in candidate['similarities']],
                 'strong_recommendations': candidate['strong_recommendations'],
                 'type': str(row.get('type', '')),
-                'episodes': safe_int(row['episodes']),
-                'year': safe_int(row['year']),
-                'image_url': image_url,
-                'thumbnail_url': thumbnail_url,
+                'episodes': self.safe_convert(row['episodes'], int),
+                'year': self.safe_convert(row['year'], int),
                 'synopsis': synopsis[:200] + "..." if synopsis and len(synopsis) > 200 else synopsis
             }
             
-            # Add explanation
             if explain:
-                sims = candidate['similarities']
-                genre_bonus = candidate.get('genre_bonus', 0)  
-                
-                if len(valid_anime) == 2:
-                    if genre_bonus > 0.3:
-                        rec_item['explanation'] = "Bridges themes from both your selections"
-                    elif genre_bonus > 0.2:
-                        rec_item['explanation'] = "Connects elements from both selections"
-                    elif candidate['min_similarity'] > 0.25:
-                        rec_item['explanation'] = "Strong appeal to both your selections"
-                    elif candidate['min_similarity'] > 0.15:
-                        rec_item['explanation'] = "Moderate appeal to both selections"
-                    elif candidate['max_similarity'] > 0.4:
-                        max_idx = sims.index(max(sims))
-                        source_title = valid_anime[max_idx]['data']['title']
-                        rec_item['explanation'] = f"Strongest similarity to {source_title}"
-                    else:
-                        rec_item['explanation'] = "Balanced recommendation across selections"
-                else:
-                    if genre_bonus > 0.25:
-                        rec_item['explanation'] = "Bridges multiple aspects of your selection"
-                    else:
-                        proportion = candidate['strong_recommendations'] / len(valid_anime)
-                        if proportion >= 0.8:
-                            rec_item['explanation'] = "Appeals to most of your selections"
-                        elif proportion >= 0.5:
-                            rec_item['explanation'] = "Appeals to several of your selections"
-                        else:
-                            rec_item['explanation'] = "Selective appeal to your tastes"
-                
-                rec_item['genre_bonus'] = safe_float(genre_bonus)
+                rec_item['explanation'] = self.generate_explanation(row, valid_anime, candidate['similarities'])
+                rec_item['genre_bonus'] = self.safe_convert(candidate.get('genre_bonus', 0))
+            
             recommendations.append(rec_item)
         
-        # Build source anime list
         source_anime_list = []
         for anime in valid_anime:
-            source_image_url = None
-            source_thumbnail_url = None
-            source_anime_row = anime_df[anime_df['mal_id'] == anime['data']['mal_id']]
-            if not source_anime_row.empty:
-                images_data = source_anime_row.iloc[0].get('images')
-                if pd.notna(images_data):
-                    try:
-                        if isinstance(images_data, str):
-                            images_dict = json.loads(images_data)
-                        else:
-                            images_dict = images_data
-                        
-                        if isinstance(images_dict, dict):
-                            if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
-                                source_image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
-                                source_thumbnail_url = images_dict['webp'].get('small_image_url')
-                            elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
-                                source_image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
-                                source_thumbnail_url = images_dict['jpg'].get('small_image_url')
-                    except:
-                        pass
-            
             source_anime_list.append({
-                'mal_id': safe_int(anime['data']['mal_id']),
+                'mal_id': self.safe_convert(anime['data']['mal_id'], int),
                 'title': str(anime['data']['title']),
-                'score': safe_float(anime['data']['score']),
-                'image_url': source_image_url,
-                'thumbnail_url': source_thumbnail_url
+                'score': self.safe_convert(anime['data']['score'])
             })
         
         return {
@@ -2519,138 +2198,111 @@ def get_multi_anime_recommendations(
                 'diversity_weight': diversity_weight
             }
         }
-        
-    except Exception as e:
-        print(f"Multi-recommend error: {str(e)}")
-        return {"error": f"Recommendation failed: {str(e)}"}
     
-# Single Recommend
+    def _format_source_anime(self, source_anime):
+        """Format source anime data"""
+        return {
+            'mal_id': self.safe_convert(source_anime['mal_id'], int),
+            'title': str(source_anime['title']),
+            'title_english': str(source_anime.get('title_english', '')),
+            'score': self.safe_convert(source_anime['score'])
+        }
+
+def load_recommender():
+    global recommender
+    if recommender is not None:
+        return recommender
+    
+    model_files = [
+        "anime_recommender_advanced.pkl.gz",
+        "anime_recommender_advanced.pkl", 
+        "dataset/anime_recommender_advanced.pkl.gz",
+        "dataset/anime_recommender_advanced.pkl"
+    ]
+    
+    for model_file in model_files:
+        if os.path.exists(model_file):
+            try:
+                with (gzip.open(model_file, "rb") if model_file.endswith('.gz') else open(model_file, "rb")) as f:
+                    model_data = pickle.load(f)
+                
+                recommender = AnimeRecommender(model_data)
+                print(f"✓ Recommender model loaded from {model_file}")
+                return recommender
+                
+            except Exception as e:
+                print(f"Failed to load {model_file}: {e}")
+                continue
+    
+    print("Warning: No recommender model found")
+    return None
+
 @app.get("/anime/{anime_id}/recommend")
-def get_anime_recommendations(
-    anime_id: int,
-    limit: int = 10,
-    min_score: float = None,
-    include_sequels: bool = True,
-    explain: bool = False
-):
-    """Get anime recommendations based on trained model with configurable options"""
-    
-    def safe_float(value):
-        """Convert value to safe float for JSON serialization"""
-        if value is None:
-            return None
-        try:
-            float_val = float(value)
-            if not np.isfinite(float_val):
-                return None
-            return float_val
-        except (ValueError, TypeError, OverflowError):
-            return None
-    
-    def safe_int(value):
-        """Convert value to safe int for JSON serialization"""
-        if value is None or pd.isna(value):
-            return None
-        try:
-            return int(value)
-        except (ValueError, TypeError, OverflowError):
-            return None
-    
+def get_anime_recommendations(anime_id: int, limit: int = 10, min_score: float = None, 
+                            include_sequels: bool = True, explain: bool = False):
+    """Get anime recommendations based on trained model"""
     rec = load_recommender()
     if rec is None:
         raise HTTPException(status_code=503, detail="Recommendation model not available")
     
-    result = rec.recommend(
-        anime_id, 
-        top_k=limit,
-        min_score=min_score,
-        include_sequels=include_sequels,
-        explain=explain
-    )
+    result = rec.recommend(anime_id, top_k=limit, min_score=min_score, 
+                          include_sequels=include_sequels, explain=explain)
     
     if "error" in result:
-        if "not found" in result["error"].lower():
-            raise HTTPException(status_code=404, detail=f"Anime with ID {anime_id} not found")
-        else:
-            raise HTTPException(status_code=500, detail=result["error"])
+        status = 404 if "not found" in result["error"].lower() else 500
+        raise HTTPException(status_code=status, detail=result["error"])
     
-    formatted_recommendations = []
+    # Add image URLs to recommendations
     for rec_item in result['recommendations']:
-        image_url = None
-        thumbnail_url = None
-        
-        anime_row = anime_df[anime_df['mal_id'] == rec_item['mal_id']]
-        if not anime_row.empty:
-            images_data = anime_row.iloc[0].get('images')
-            if pd.notna(images_data):
-                try:
-                    if isinstance(images_data, str):
-                        images_dict = json.loads(images_data)
-                    else:
-                        images_dict = images_data
-                    
-                    if isinstance(images_dict, dict):
-                        if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
-                            image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
-                            thumbnail_url = images_dict['webp'].get('small_image_url')
-                        elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
-                            image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
-                            thumbnail_url = images_dict['jpg'].get('small_image_url')
-                except:
-                    pass
-        
-        formatted_rec = {
-            "id": safe_int(rec_item['mal_id']),
-            "title": str(rec_item.get('title', '')),
-            "title_english": str(rec_item.get('title_english', '')),
-            "image_url": image_url,
-            "thumbnail_url": thumbnail_url,
-            "score": safe_float(rec_item.get('score')),
-            "similarity": safe_float(rec_item.get('similarity')),
-            "type": str(rec_item.get('type', '')),
-            "episodes": safe_int(rec_item.get('episodes')),
-            "year": safe_int(rec_item.get('year')),
-            "synopsis": str(rec_item.get('synopsis', ''))
-        }
-        
-        # Add explanation if available
-        if rec_item.get('explanation'):
-            formatted_rec['explanation'] = str(rec_item['explanation'])
-        
-        formatted_recommendations.append(formatted_rec)
+        image_url, thumbnail_url = rec.get_image_urls(rec_item['mal_id'], anime_df)
+        rec_item.update({'image_url': image_url, 'thumbnail_url': thumbnail_url})
     
-    source_image_url = None
-    source_thumbnail_url = None
-    source_anime_row = anime_df[anime_df['mal_id'] == result['source']['mal_id']]
-    if not source_anime_row.empty:
-        images_data = source_anime_row.iloc[0].get('images')
-        if pd.notna(images_data):
-            try:
-                if isinstance(images_data, str):
-                    images_dict = json.loads(images_data)
-                else:
-                    images_dict = images_data
-                
-                if isinstance(images_dict, dict):
-                    if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
-                        source_image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
-                        source_thumbnail_url = images_dict['webp'].get('small_image_url')
-                    elif 'jpg' in images_dict and isinstance(images_dict['jpg'], dict):
-                        source_image_url = images_dict['jpg'].get('large_image_url') or images_dict['jpg'].get('image_url')
-                        source_thumbnail_url = images_dict['jpg'].get('small_image_url')
-            except:
-                pass
+    # Add image URLs to source
+    source_image_url, source_thumbnail_url = rec.get_image_urls(result['source']['mal_id'], anime_df)
+    result['source'].update({'image_url': source_image_url, 'thumbnail_url': source_thumbnail_url})
     
     return {
-        "source": {
-            "id": safe_int(result['source']['mal_id']),
-            "title": str(result['source'].get('title', '')),
-            "title_english": str(result['source'].get('title_english', '')),
-            "image_url": source_image_url,
-            "thumbnail_url": source_thumbnail_url,
-            "score": safe_float(result['source'].get('score'))
-        },
-        "recommendations": formatted_recommendations,
-        "count": len(formatted_recommendations),
+        "source": result['source'],
+        "recommendations": result['recommendations'],
+        "count": len(result['recommendations']),
         "filters_applied": result.get('filters_applied', {})
     }
+
+@app.post("/anime/multi-recommend")
+def get_multi_anime_recommendations(request: Dict[str, Any]):
+    """Generate balanced recommendations from multiple anime"""
+    anime_ids = request.get('anime_ids', [])
+    top_k = request.get('top_k', 20)
+    min_score = request.get('min_score', None)
+    include_sequels = request.get('include_sequels', True)
+    explain = request.get('explain', False)
+    diversity_weight = request.get('diversity_weight', 0.0)
+
+    print(f"Multi-recommend request: include_sequels={include_sequels}, anime_ids={anime_ids}")
+
+    rec = load_recommender()
+    if not rec:
+        return {"error": "Recommender not available"}
+    
+    try:
+        result = rec.multi_recommend(anime_ids, top_k=top_k, min_score=min_score,
+                                   include_sequels=include_sequels, explain=explain,
+                                   diversity_weight=diversity_weight)
+        
+        if "error" in result:
+            return result
+        
+        # Add image URLs
+        for rec_item in result['recommendations']:
+            image_url, thumbnail_url = rec.get_image_urls(rec_item['mal_id'], anime_df)
+            rec_item.update({'image_url': image_url, 'thumbnail_url': thumbnail_url})
+        
+        for source in result['source_anime']:
+            image_url, thumbnail_url = rec.get_image_urls(source['mal_id'], anime_df)
+            source.update({'image_url': image_url, 'thumbnail_url': thumbnail_url})
+        
+        return result
+        
+    except Exception as e:
+        print(f"Multi-recommend error: {str(e)}")
+        return {"error": f"Recommendation failed: {str(e)}"}
