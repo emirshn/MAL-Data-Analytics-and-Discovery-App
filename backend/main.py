@@ -1523,7 +1523,7 @@ from typing import Dict, Any
 
 class AnimeRecommender:
     def __init__(self, model_data):
-        self.df = model_data['df']
+        self.df = anime_df
         self.features = model_data['features']
         self.model_info = model_data.get('model_info', {})
         self.setup_enhanced_genre_groups()
@@ -1854,28 +1854,6 @@ class AnimeRecommender:
         
         return "; ".join(explanation_parts) if explanation_parts else "Similar content profile and viewing appeal"
     
-    def is_sequel_or_related(self, candidate_row, source_anime_list):
-        """Check if candidate is a sequel/related to any source anime"""
-        candidate_title = str(candidate_row.get("title", "")).lower()
-        
-        for anime in source_anime_list:
-            if isinstance(anime, dict) and 'data' in anime:
-                source_title = str(anime['data'].get("title", "")).lower()
-            else:
-                source_title = str(anime.get("title", "")).lower()
-            
-            candidate_words = candidate_title.split()
-            source_words = source_title.split()
-            
-            if len(candidate_words) > 0 and len(source_words) > 0:
-                candidate_main = candidate_words[0]
-                source_main = source_words[0]
-                
-                if (len(candidate_main) > 3 and len(source_main) > 3 and
-                    (candidate_main == source_main or candidate_main in source_title or source_main in candidate_title)):
-                    return True
-        return False
-    
     def get_image_urls(self, mal_id, anime_df):
         """Extract image URLs from anime dataframe"""
         anime_row = anime_df[anime_df['mal_id'] == mal_id]
@@ -1898,22 +1876,6 @@ class AnimeRecommender:
                 pass
         return None, None
     
-    def is_sequel_or_related_simple(self, candidate_row, source_anime_list):
-        """Simple sequel detection using first word matching"""
-        candidate_title = str(candidate_row.get('title', '')).lower()
-        
-        for source_anime in source_anime_list:
-            if isinstance(source_anime, dict) and 'data' in source_anime:
-                source_title = str(source_anime['data'].get('title', '')).lower()
-            else:
-                source_title = str(source_anime.get('title', '')).lower()
-            
-            source_words = source_title.split()
-            if source_words and len(source_words[0]) > 3:
-                if source_words[0] in candidate_title:
-                    return True
-        return False
-
     def recommend(self, anime_id, top_k=10, min_score=None, include_sequels=True, explain=False):
         """Single anime recommendation"""
         if anime_id not in self.df['mal_id'].values:
@@ -1933,12 +1895,18 @@ class AnimeRecommender:
         if min_score is not None:
             results_df = results_df[(results_df['score'] >= min_score) & results_df['score'].notna()]
         
+        valid_anime = [{'data': source_anime}]
+    
         if not include_sequels:
-            source_title_words = source_anime['title'].lower().split()
-            if source_title_words and len(source_title_words[0]) > 3:
-                mask = ~results_df['title'].str.lower().str.contains(source_title_words[0], na=False, regex=False)
-                results_df = results_df[mask]
-        
+            filtered_indices = []
+            for idx in results_df.index:
+                row = self.df.iloc[idx]
+                if not self.is_sequel_or_related(row, valid_anime):
+                    filtered_indices.append(idx)
+            results_df = results_df.loc[filtered_indices]
+    
+
+        # Rest of your existing code...
         if len(results_df) == 0:
             return {
                 'source': self._format_source_anime(source_anime),
@@ -1946,7 +1914,6 @@ class AnimeRecommender:
                 'filters_applied': {'min_score': min_score, 'include_sequels': include_sequels, 'explain': explain}
             }
         
-        # Get top recommendations
         sim_indices = results_df.nlargest(min(top_k, len(results_df)), 'similarity').index
         
         recommendations = []
@@ -1980,7 +1947,48 @@ class AnimeRecommender:
             'recommendations': recommendations,
             'filters_applied': {'min_score': min_score, 'include_sequels': include_sequels, 'explain': explain}
         }
-    
+        
+
+    def is_sequel_or_related(self, candidate_row, source_anime_list):
+        """Simple check: if candidate appears in any source anime's relations, filter it out"""
+        candidate_mal_id = candidate_row.get('mal_id')
+        if pd.isna(candidate_mal_id):
+            return False
+        
+        try:
+            candidate_mal_id = int(candidate_mal_id)
+        except:
+            return False
+        
+        # Check each source anime's relations
+        for anime in source_anime_list:
+            if isinstance(anime, dict) and 'data' in anime:
+                source_data = anime['data']
+            else:
+                source_data = anime
+            
+            relations = source_data.get('relations')
+            
+            if relations is None or pd.isna(relations) or relations == '' or relations == '[]':
+                continue
+            
+            try:
+                relations_data = json.loads(relations)
+                
+                for relation in relations_data:
+                    if 'entry' in relation:
+                        for entry in relation['entry']:
+                            entry_mal_id = entry.get('mal_id')
+                            if entry_mal_id is not None:
+                                try:
+                                    if int(entry_mal_id) == candidate_mal_id:
+                                        return True
+                                except:
+                                    continue
+            except Exception as e:
+                continue
+        
+        return False
     def multi_recommend(self, anime_ids, top_k=20, min_score=None, include_sequels=True, explain=False, diversity_weight=0.0):
         """Multi-anime recommendation"""
         if not anime_ids or len(anime_ids) > 20:
@@ -2026,27 +2034,10 @@ class AnimeRecommender:
                 if min_score is not None and (pd.isna(row['score']) or row['score'] < min_score):
                     continue
                 
-                # Replace the sequel checking section in multi_recommend with this:
                 if not include_sequels:
-                    print("SEQUEL FILTERING IS ACTIVE")
-                    # Use exact same logic as single recommend
-                    is_related = False
-                    candidate_title = str(row.get('title', '')).lower()
-                    
-                    for source in valid_anime:
-                        source_anime = source['data']
-                        source_title_words = str(source_anime.get('title', '')).lower().split()
-                        
-                        if source_title_words and len(source_title_words[0]) > 3:
-                            # Check if candidate title contains the first word of source title
-                            if source_title_words[0] in candidate_title:
-                                is_related = True
-                                break
-                    
-                    if is_related:
+                    if self.is_sequel_or_related(row, valid_anime):
                         continue
-                else:
-                    print("SEQUEL FILTERING IS DISABLED - should see all results")
+                
                 similarity_score = similarities[idx]
                 if similarity_score < 0.15:
                     continue

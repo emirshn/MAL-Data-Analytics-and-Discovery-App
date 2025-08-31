@@ -221,6 +221,9 @@
               <option :value="36">36 results</option>
               <option :value="48">48 results</option>
               <option :value="60">60 results</option>
+              <option :value="100">100 results</option>
+              <option :value="150">150 results</option>
+              <option :value="200">200 results</option>
             </select>
           </div>
         </div>
