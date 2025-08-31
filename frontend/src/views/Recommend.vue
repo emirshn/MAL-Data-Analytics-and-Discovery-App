@@ -2,7 +2,6 @@
   <div class="pt-20 min-h-screen text-white relative bg-container">
     <div class="relative z-10 max-w-7xl mx-auto p-6">
       <div class="mb-8">
-        <!-- Header -->
         <div class="text-center mb-12">
           <h1
             class="text-6xl font-extrabold mb-4 bg-gradient-to-r from-blue-500 to-violet-500 bg-clip-text text-transparent"
@@ -160,7 +159,7 @@
         </div>
       </div>
 
-      <!-- Filter Options -->
+      <!-- Filter -->
       <div
         v-if="filteredRecommendations.length"
         class="bg-gray-800/90 backdrop-blur-sm rounded-xl p-6 mb-6 shadow-2xl border border-gray-700"
@@ -379,7 +378,7 @@
         </div>
       </div>
 
-      <!-- No results after filtering -->
+      <!-- No results -->
       <div
         v-else-if="allRecommendations.length && !filteredRecommendations.length"
         class="bg-gray-800/90 backdrop-blur-sm rounded-xl p-8 text-center shadow-2xl border border-gray-700"
@@ -407,17 +406,6 @@
         >
           Clear Filters
         </button>
-      </div>
-
-      <!-- Empty State -->
-      <div v-else-if="!loading && selectedAnime.length === 0" class="text-center py-16">
-        <div class="text-6xl mb-6">🎯</div>
-        <div class="text-gray-300 text-2xl mb-4">
-          Select your favorite anime to get personalized recommendations
-        </div>
-        <div class="text-gray-500 text-lg">
-          Search and add anime above to discover similar shows you might enjoy
-        </div>
       </div>
     </div>
   </div>
@@ -454,22 +442,18 @@ const handleItemClick = (rec) => {
   router.push({ name: 'AnimeDetail', params: { id: rec.mal_id } })
 }
 
-// Simple function to update filtered recommendations
 const updateFilteredRecommendations = () => {
   let filtered = [...allRecommendations.value]
 
-  // Apply min score filter
   if (filters.minScore) {
     filtered = filtered.filter((rec) => rec.score && rec.score >= parseFloat(filters.minScore))
   }
 
-  // Limit results
   filtered = filtered.slice(0, filters.maxResults)
 
   filteredRecommendations.value = filtered
 }
 
-// Watch for filter changes
 watch(
   () => [filters.includeSequels, filters.minScore, filters.maxResults],
   () => {

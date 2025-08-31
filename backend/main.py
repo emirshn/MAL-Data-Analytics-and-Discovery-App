@@ -83,7 +83,7 @@ def get_anime(
         )
         df = df[search_mask]
 
-    # --- Genre filter (works with cleaned array format) ---
+    # --- Genre filter ---
     if genre:
         def has_genre(genres_field):
             if pd.isna(genres_field):
@@ -100,16 +100,13 @@ def get_anime(
         
         df = df[df['genres'].apply(has_genre)]
 
-    # --- Year filter (robust handling of year field) ---
+    # --- Year filter  ---
     if year is not None:
         def matches_year(row):
-            # First try the direct year column
             year_val = row.get('year')
             if pd.notna(year_val):
                 try:
-                    # Handle both string and numeric year values
                     if isinstance(year_val, str):
-                        # Remove any non-numeric characters and try to parse
                         year_clean = ''.join(filter(str.isdigit, str(year_val)))
                         if year_clean:
                             return int(year_clean) == year
@@ -124,12 +121,10 @@ def get_anime(
                 try:
                     if isinstance(aired_from, str):
                         import datetime
-                        # Handle different date formats
                         aired_from_clean = aired_from.replace('Z', '+00:00')
                         parsed_date = datetime.datetime.fromisoformat(aired_from_clean)
                         return parsed_date.year == year
                 except Exception as e:
-                    # If datetime parsing fails, try to extract year with regex
                     try:
                         import re
                         year_match = re.search(r'\b(\d{4})\b', str(aired_from))
@@ -143,10 +138,7 @@ def get_anime(
         year_mask = df.apply(matches_year, axis=1)
         df = df[year_mask]
         
-        # Debug: print how many results we got
-        print(f"Year filter {year}: Found {len(df)} results")
-
-    # --- Format (type) filter ---
+    # --- Format filter ---
     if format:
         def safe_type_compare(type_val):
             if pd.isna(type_val):
@@ -174,7 +166,7 @@ def get_anime(
     if min_score is not None:
         df = df[df['score'] >= min_score]
 
-    # --- Episode type filter (compute from episodes and type) ---
+    # --- Episode type filter ---
     if episode_type:
         def get_episode_type(row):
             episodes = row.get('episodes')
@@ -200,7 +192,7 @@ def get_anime(
         df['computed_episode_type'] = df.apply(get_episode_type, axis=1)
         df = df[df['computed_episode_type'] == episode_type.lower()]
 
-    # --- Completed only filter (compute from status) ---
+    # --- Completed only filter  ---
     if completed_only is not None:
         def is_completed(status_val):
             if pd.isna(status_val):
@@ -211,7 +203,7 @@ def get_anime(
         df['computed_is_completed'] = df['status'].apply(is_completed)
         df = df[df['computed_is_completed'] == completed_only]
 
-    # --- Sort by score (prioritizing items with scores) ---
+    # --- Sort by score ---
     # Create computed columns for sorting
     df['score_filled'] = df['score'].fillna(0)
     df['has_score'] = df['score'].notna()
@@ -220,19 +212,11 @@ def get_anime(
     # Sort by has_score first (items with scores), then by score value
     df = df.sort_values(by=['has_score_int', 'score_filled'], ascending=[False, False])
 
-    # --- Build results ---
     results = []
     total_count = len(df)
     
     for _, row in df.iloc[offset:offset+limit].iterrows():
-        # Parse streaming platforms - use 'streaming' column from CSV
-        streaming_data = row.get('streaming', [])
-        if pd.isna(streaming_data):
-            streaming_platforms = []
-        else:
-            streaming_platforms = parse_array_field(streaming_data)
-        
-        # Parse genres for response - extract names from dictionaries
+        # Parse genres for response
         genres_raw = parse_array_field(row.get('genres', []))
         genres = []
         for genre_item in genres_raw:
@@ -249,14 +233,12 @@ def get_anime(
         if pd.notna(images_data):
             try:
                 import json
-                # Parse the JSON string directly
                 if isinstance(images_data, str):
                     images_dict = json.loads(images_data)
                 else:
                     images_dict = images_data
                 
                 if isinstance(images_dict, dict):
-                    # Try webp first, then jpg
                     if 'webp' in images_dict and isinstance(images_dict['webp'], dict):
                         image_url = images_dict['webp'].get('large_image_url') or images_dict['webp'].get('image_url')
                         thumbnail_url = images_dict['webp'].get('small_image_url')
@@ -267,7 +249,7 @@ def get_anime(
                 print(f"Error parsing images for anime {row.get('mal_id')}: {e}")
                 pass
         
-        # Compute episode type for response
+        # Compute episode type 
         episodes_val = row.get('episodes')
         anime_type_raw = row.get('type')
         anime_type = str(anime_type_raw).lower() if pd.notna(anime_type_raw) else ''
@@ -287,20 +269,12 @@ def get_anime(
             except (ValueError, TypeError):
                 pass
         
-        # Compute is_completed for response
+        # Compute is_completed 
         status_val = row.get('status')
         is_completed_computed = False
         if pd.notna(status_val):
             status_lower = str(status_val).lower()
             is_completed_computed = status_lower in ['finished airing', 'completed']
-        
-        # Create synopsis_short from synopsis if available
-        synopsis = safe_value(row.get('synopsis'))
-        synopsis_short = None
-        if synopsis and len(synopsis) > 200:
-            synopsis_short = synopsis[:197] + "..."
-        elif synopsis:
-            synopsis_short = synopsis
         
         # Parse studios from studios column
         studios_data = row.get('studios', [])
@@ -359,22 +333,21 @@ def get_anime_filters():
         for genre_item in genre_list:
             if isinstance(genre_item, dict) and 'name' in genre_item:
                 genre_name = genre_item['name']
-                if genre_name:  # Only add non-empty names
+                if genre_name:  
                     genres.add(genre_name)
             elif isinstance(genre_item, str) and genre_item:
-                # Handle case where genres might be stored as strings
                 genres.add(genre_item)
     
-    genres = sorted([g for g in genres if g])  # Remove empty strings and sort
+    genres = sorted([g for g in genres if g]) 
 
-    # --- Years (robust extraction) ---
+    # --- Years ---
     years = set()
     
     # Extract from year column first
     for year_val in df['year'].dropna():
         try:
             year_int = int(float(year_val))
-            if 1900 <= year_int <= 2030:  # Reasonable range
+            if 1900 <= year_int <= 2030:  
                 years.add(year_int)
         except (ValueError, TypeError):
             pass
@@ -401,7 +374,7 @@ def get_anime_filters():
     # --- Statuses ---
     statuses = sorted([s for s in df['status'].dropna().unique().tolist() if s])
 
-    # --- Episode Types (if column exists) ---
+    # --- Episode Types---
     episode_types = []
     if 'episode_type' in df.columns:
         episode_types = sorted([et for et in df['episode_type'].dropna().unique().tolist() if et])
@@ -478,7 +451,7 @@ def get_manga(
     max_chapters: int = None,
     min_volumes: int = None,
     max_volumes: int = None,
-    year: int = None,  # New year parameter
+    year: int = None,  
 ):
     df = manga_df.copy()
 
@@ -550,7 +523,6 @@ def get_manga(
     # --- Year filter ---
     if year is not None:
         def matches_year(row):
-            # Check published_from column first
             published_from = row.get('published_from')
             if pd.notna(published_from):
                 try:
@@ -561,7 +533,7 @@ def get_manga(
                 except:
                     pass
             
-            # Fallback: check if there's a published column (for compatibility)
+            # Fallback: check if there's a published column 
             published = row.get('published')
             if pd.notna(published):
                 published_data = safe_json_parse(published)
@@ -605,24 +577,19 @@ def get_manga(
     # --- Sort by score ---
     df = df.sort_values(by=['score'], ascending=False, na_position='last')
 
-    # --- Build results ---
     results = []
     total_count = len(df)
     
     for _, row in df.iloc[offset:offset+limit].iterrows():
-        # Parse genres
         genres = safe_json_parse(row.get('genres', []))
         genre_names = [g.get('name', '') for g in genres if isinstance(g, dict)]
         
-        # Parse authors
         authors = safe_json_parse(row.get('authors', []))
         author_names = [a.get('name', '') for a in authors if isinstance(a, dict)]
         
-        # Parse demographics
         demographics = safe_json_parse(row.get('demographics', []))
         demographic_names = [d.get('name', '') for d in demographics if isinstance(d, dict)]
         
-        # Extract image URL from images JSON
         images = safe_json_parse(row.get('images', {}))
         image_url = None
         if isinstance(images, dict):
@@ -702,7 +669,7 @@ def get_manga_filters():
                 themes.add(theme['name'])
     themes = sorted([t for t in themes if t])
 
-    # --- Authors (top 50) ---
+    # --- Authors ---
     author_counts = {}
     for author_field in df['authors'].dropna():
         author_list = safe_json_parse(author_field)
@@ -714,7 +681,7 @@ def get_manga_filters():
     top_authors = sorted(author_counts.items(), key=lambda x: x[1], reverse=True)[:50]
     authors = [name for name, _ in top_authors]
 
-    # --- Serializations (top 30) ---
+    # --- Serializations ---
     serial_counts = {}
     for serial_field in df['serializations'].dropna():
         serial_list = safe_json_parse(serial_field)
@@ -729,7 +696,6 @@ def get_manga_filters():
     # --- Years ---
     years = set()
     
-    # Extract years from published_from column
     for published_from in df['published_from'].dropna():
         try:
             if isinstance(published_from, str):
@@ -739,7 +705,7 @@ def get_manga_filters():
         except:
             pass
     
-    # Fallback: if there's a published column, extract from there too
+    # Fallback
     if 'published' in df.columns:
         for published_field in df['published'].dropna():
             published_data = safe_json_parse(published_field)
@@ -799,7 +765,7 @@ def get_manga_filters():
         "themes": themes,
         "authors": authors,
         "serializations": serializations,
-        "years": years,  # New years array
+        "years": years,  
         "score_ranges": score_ranges,
         "chapter_ranges": chapter_ranges,
         "volume_ranges": volume_ranges
@@ -869,7 +835,6 @@ def build_graph():
     nodes = {}
     links = []
 
-    # Helper to add a node if it doesn't exist
     def add_node(mal_id, name, ntype, url=None):
         key = f"{ntype}_{mal_id}"
         if key not in nodes:
@@ -881,7 +846,6 @@ def build_graph():
                 "url": url
             }
 
-    # Parse both anime + manga CSVs
     for df, ntype in [(anime_df, "anime"), (manga_df, "manga")]:
         for _, row in df.iterrows():
             mal_id = row["mal_id"]
@@ -900,17 +864,14 @@ def build_graph():
                             target_name = entry.get("name", "")
                             target_url = entry.get("url", "")
 
-                            # add the target node (anime or manga)
                             add_node(target_id, target_name, target_type, target_url)
 
-                            # create link
                             links.append({
                                 "source": f"{ntype}_{mal_id}",
                                 "target": f"{target_type}_{target_id}",
                                 "relation": relation_type
                             })
                 except Exception as e:
-                    # malformed JSON
                     continue
 
     return {"nodes": list(nodes.values()), "links": links}
@@ -921,9 +882,9 @@ async def get_graph():
     return JSONResponse(content=graph)
 
 @app.get("/stats/")
-def get_comprehensive_stats():
-    """Get all comprehensive statistics in one endpoint"""
-    
+def get_stats():
+    """Get all statistics in one endpoint"""
+
     # Helper functions for safe JSON parsing and array parsing
     def safe_json_parse(field):
         if pd.isna(field):
@@ -940,18 +901,16 @@ def get_comprehensive_stats():
             return []
         try:
             if isinstance(field, str):
-                # Handle both JSON arrays and string representations
                 if field.startswith('['):
                     return json.loads(field)
                 else:
-                    # Handle comma-separated values
                     return [{'name': item.strip()} for item in field.split(',') if item.strip()]
             return field if isinstance(field, list) else []
         except:
             return []
     
     # =============================================================================
-    # BASIC STATS (Existing)
+    # BASIC STATS
     # =============================================================================
     
     # Basic counts
@@ -1042,7 +1001,7 @@ def get_comprehensive_stats():
     genre_avg_scores = {
         genre: sum(scores) / len(scores) 
         for genre, scores in genre_scores.items() 
-        if len(scores) >= 10  # Only genres with 10+ entries
+        if len(scores) >= 10  
     }
     
     # =============================================================================
@@ -1201,13 +1160,13 @@ def get_comprehensive_stats():
     members_score_data = []
     
     # Sample data for correlations (every 10th entry to reduce size)
-    sample_anime = anime_df[::10]  # Every 10th row
+    sample_anime = anime_df[::10] 
     
     for _, row in sample_anime.dropna(subset=['popularity', 'score']).iterrows():
         popularity_score_data.append({
             'popularity': int(row['popularity']),
             'score': float(row['score']),
-            'title': row['title'][:50]  # Truncate long titles
+            'title': row['title'][:50] 
         })
     
     for _, row in sample_anime.dropna(subset=['rank', 'score']).iterrows():
@@ -1314,7 +1273,7 @@ def get_comprehensive_stats():
     }
     
     # =============================================================================
-    # RETURN COMPREHENSIVE DATA
+    # RETURN DATA
     # =============================================================================
     
     top_manga_scored = manga_df.nlargest(20, 'score')[['title', 'score', 'members', 'favorites']].to_dict('records')
@@ -1322,7 +1281,6 @@ def get_comprehensive_stats():
     top_manga_members = manga_df.nlargest(20, 'members')[['title', 'members', 'score']].to_dict('records')
 
     return {
-        # Basic Overview
         "overview": {
             "total_anime": total_anime,
             "total_manga": total_manga,
@@ -1466,7 +1424,6 @@ def search_anime(request: SearchRequest):
             else:
                 episodes = int(episodes)
             
-            # Extract image URL from images JSON
             image_url = None
             images = row.get('images')
             if pd.notna(images) and images:
@@ -1476,7 +1433,6 @@ def search_anime(request: SearchRequest):
                     else:
                         images_data = images
                     
-                    # Try to get the best quality image available
                     if 'webp' in images_data and 'large_image_url' in images_data['webp']:
                         image_url = images_data['webp']['large_image_url']
                     elif 'webp' in images_data and 'image_url' in images_data['webp']:
@@ -1529,7 +1485,6 @@ class AnimeRecommender:
         self.setup_enhanced_genre_groups()
     
     def setup_enhanced_genre_groups(self):
-        # Keep your existing genre_groups dictionary exactly as-is
           self.genre_groups = {
                             # Core demographics and target audience
                             'shounen_action': ['Action', 'Adventure', 'Shounen', 'Super Power', 'Martial Arts', 'Tournament'],
@@ -1785,7 +1740,6 @@ class AnimeRecommender:
                         else:
                             match_reasons.append(f"shares {list(common_tags)[0]}")
                     
-                    # Check other similarities
                     source_studios = set(self.parse_list(source_data.get('studios', '')))
                     if candidate_studios & source_studios:
                         match_reasons.append("same studio")
@@ -1890,7 +1844,7 @@ class AnimeRecommender:
         # Filter candidates
         results_df = self.df.copy()
         results_df['similarity'] = similarities
-        results_df = results_df[results_df['mal_id'] != anime_id]  # Remove source
+        results_df = results_df[results_df['mal_id'] != anime_id]
         
         if min_score is not None:
             results_df = results_df[(results_df['score'] >= min_score) & results_df['score'].notna()]
@@ -1905,8 +1859,6 @@ class AnimeRecommender:
                     filtered_indices.append(idx)
             results_df = results_df.loc[filtered_indices]
     
-
-        # Rest of your existing code...
         if len(results_df) == 0:
             return {
                 'source': self._format_source_anime(source_anime),
@@ -1948,7 +1900,6 @@ class AnimeRecommender:
             'filters_applied': {'min_score': min_score, 'include_sequels': include_sequels, 'explain': explain}
         }
         
-
     def is_sequel_or_related(self, candidate_row, source_anime_list):
         """Simple check: if candidate appears in any source anime's relations, filter it out"""
         candidate_mal_id = candidate_row.get('mal_id')
@@ -1960,7 +1911,6 @@ class AnimeRecommender:
         except:
             return False
         
-        # Check each source anime's relations
         for anime in source_anime_list:
             if isinstance(anime, dict) and 'data' in anime:
                 source_data = anime['data']
@@ -1989,12 +1939,11 @@ class AnimeRecommender:
                 continue
         
         return False
+    
     def multi_recommend(self, anime_ids, top_k=20, min_score=None, include_sequels=True, explain=False, diversity_weight=0.0):
         """Multi-anime recommendation"""
         if not anime_ids or len(anime_ids) > 20:
             return {"error": "Invalid anime IDs (must be 1-20)"}
-        print(f"Multi-recommend method: include_sequels={include_sequels}")  # Debug log
-        # Get valid anime
         valid_anime = []
         for anime_id in anime_ids:
             if anime_id in self.df['mal_id'].values:
@@ -2011,7 +1960,6 @@ class AnimeRecommender:
         
         selected_mal_ids = [anime['id'] for anime in valid_anime]
         
-        # Get candidate recommendations from each source
         individual_recs = {}
         
         for i, source_anime in enumerate(valid_anime):
@@ -2283,7 +2231,6 @@ def get_multi_anime_recommendations(request: Dict[str, Any]):
         if "error" in result:
             return result
         
-        # Add image URLs
         for rec_item in result['recommendations']:
             image_url, thumbnail_url = rec.get_image_urls(rec_item['mal_id'], anime_df)
             rec_item.update({'image_url': image_url, 'thumbnail_url': thumbnail_url})
