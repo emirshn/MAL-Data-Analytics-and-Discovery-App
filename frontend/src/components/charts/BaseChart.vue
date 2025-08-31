@@ -29,13 +29,11 @@ export default {
   transition: all 0.3s ease;
 }
 
-/* Canvas responsiveness */
 canvas {
   max-width: 100%;
   height: auto !important;
 }
 
-/* Backdrop blur enhancement */
 .backdrop-blur-lg {
   backdrop-filter: blur(16px) saturate(180%);
 }

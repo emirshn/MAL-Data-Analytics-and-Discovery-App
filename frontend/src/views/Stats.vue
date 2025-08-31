@@ -2,7 +2,6 @@
   <div
     class="w-full mx-auto p-8 bg-gradient-to-br from-slate-800 to-slate-950 min-h-screen text-white pt-[100px]"
   >
-    <!-- Header -->
     <div class="text-center mb-12">
       <h1
         class="text-6xl font-extrabold mb-4 bg-gradient-to-r from-indigo-500 to-violet-500 bg-clip-text text-transparent"
@@ -12,7 +11,6 @@
       <p class="text-xl text-slate-400">Complete analysis of anime and manga collection</p>
     </div>
 
-    <!-- Loading State -->
     <div v-if="loading" class="flex flex-col items-center justify-center min-h-[400px]">
       <div
         class="w-12 h-12 border-4 border-slate-700 border-t-indigo-500 rounded-full animate-spin mb-4"
@@ -24,7 +22,6 @@
     <!-- Main Content -->
     <div v-else class="space-y-16">
       <OverviewSection :cards="overviewCards" :animatedValues="animatedValues" />
-
       <ScoreAnalysisSection :stats="stats" />
       <GenreAnalysisSection :stats="stats" />
       <StudioAnalysisSection :stats="stats" />
@@ -70,10 +67,9 @@ export default {
     const stats = ref({})
     const animatedValues = ref({})
 
-    // Chart instances for cleanup
+    // Chart instances for cleanup later
     const chartInstances = ref(new Map())
 
-    // Overview cards
     const overviewCards = ref([
       { icon: '📺', title: 'Total Anime', key: 'total_anime', description: 'Anime entries' },
       { icon: '📖', title: 'Total Manga', key: 'total_manga', description: 'Manga entries' },
@@ -134,6 +130,7 @@ export default {
       },
     ])
 
+    // Missing values for overview
     const calculateMissingValues = (data) => {
       const calculatedValues = {}
 
@@ -168,7 +165,7 @@ export default {
       return calculatedValues
     }
 
-    // Fetch comprehensive stats
+    // Fetch stats
     const fetchStats = async () => {
       try {
         const response = await fetch('http://127.0.0.1:8000/stats/')
@@ -177,7 +174,7 @@ export default {
         stats.value = data
         console.log('Comprehensive stats loaded:', data)
 
-        // Calculate missing values
+        // Calculate missing values for overview which doesnt exists in data
         const calculatedValues = calculateMissingValues(data)
 
         // Prepare overview data for animation
@@ -185,10 +182,9 @@ export default {
           ...data.overview,
           anime_completion_rate: data.overview.completion_rates.anime,
           manga_completion_rate: data.overview.completion_rates.manga,
-          ...calculatedValues, // Add calculated values
+          ...calculatedValues,
         }
 
-        // Animate numbers
         animateNumbers(overviewData)
 
         loading.value = false
@@ -199,7 +195,6 @@ export default {
       }
     }
 
-    // Animation functions
     const animateNumbers = (data) => {
       overviewCards.value.forEach((card) => {
         const target = data[card.key] || 0
@@ -253,7 +248,6 @@ export default {
 }
 </script>
 <style scoped>
-/* Custom scrollbar for top lists */
 .max-h-96::-webkit-scrollbar {
   width: 4px;
 }
@@ -272,14 +266,12 @@ export default {
   background: rgba(99, 102, 241, 0.8);
 }
 
-/* Hover effects for chart containers */
 .bg-white\/5:hover {
   background: rgba(255, 255, 255, 0.08);
   transform: translateY(-2px);
   transition: all 0.3s ease;
 }
 
-/* Responsive text sizing */
 @media (max-width: 640px) {
   .text-6xl {
     font-size: 2.5rem;
@@ -290,13 +282,11 @@ export default {
   }
 }
 
-/* Chart container responsiveness */
 canvas {
   max-width: 100%;
   height: auto !important;
 }
 
-/* Loading animation enhancement */
 @keyframes pulse {
   0%,
   100% {
@@ -320,7 +310,6 @@ canvas {
   }
 }
 
-/* Gradient text animation */
 .bg-gradient-to-r {
   background-size: 200% 200%;
   animation: gradientShift 3s ease infinite;
@@ -338,19 +327,16 @@ canvas {
   }
 }
 
-/* Smooth transitions for all interactive elements */
 * {
   transition: all 0.2s ease;
 }
 
-/* Card hover effects */
 .hover\:shadow-2xl:hover {
   box-shadow:
     0 25px 50px -12px rgba(0, 0, 0, 0.25),
     0 0 0 1px rgba(99, 102, 241, 0.1);
 }
 
-/* Backdrop blur enhancement */
 .backdrop-blur-lg {
   backdrop-filter: blur(16px) saturate(180%);
 }

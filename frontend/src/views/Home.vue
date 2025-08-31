@@ -1,17 +1,20 @@
 <template>
   <div class="p-4 pt-24 min-h-screen bg-gray-900 text-white">
-    <!-- Header text -->
-    <h1 class="text-5xl font-bold text-center mb-8">Welcome to MAL Discovery</h1>
+    <div class="text-center mb-12">
+      <h1
+        class="text-6xl font-extrabold mb-4 bg-gradient-to-r from-purple-500 to-blue-500 bg-clip-text text-transparent"
+      >
+        Welcome to MAL Discovery
+      </h1>
+      <p
+        class="text-center text-lg md:text-xl mb-12 max-w-3xl mx-auto text-gray-300 text-slate-400"
+      >
+        This platform helps you explore anime and manga data in depth. Use the navigation above to
+        access different pages and discover their functionalities.
+      </p>
+    </div>
 
-    <!-- Description -->
-    <p class="text-center text-lg md:text-xl mb-12 max-w-3xl mx-auto text-gray-300">
-      This platform helps you explore anime and manga data in depth. Use the navigation above to
-      access different pages and discover their functionalities.
-    </p>
-
-    <!-- Page explanations -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8 max-w-6xl mx-auto">
-      <!-- Example card -->
       <div
         class="bg-gray-800 rounded-xl p-6 shadow-lg hover:shadow-xl transition-shadow duration-300"
       >
@@ -63,7 +66,6 @@
       </div>
     </div>
 
-    <!-- Optional footer note -->
     <p class="text-center text-gray-500 mt-12 text-sm">
       Navigate through the sections above to explore all features of MAL Discovery.
     </p>
