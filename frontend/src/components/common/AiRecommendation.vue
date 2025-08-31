@@ -178,7 +178,6 @@
 <script setup>
 import { defineProps, defineEmits } from 'vue'
 
-// Define props
 const props = defineProps({
   recommendations: {
     type: Array,
@@ -203,10 +202,8 @@ const props = defineProps({
   },
 })
 
-// Define emits
 const emit = defineEmits(['filters-changed', 'item-click', 'image-error', 'reset-filters'])
 
-// Helper functions
 const getImageUrl = (recommendation) => {
   return recommendation.image_url || recommendation.thumbnail_url || '/api/placeholder/160/213'
 }

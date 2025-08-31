@@ -29,7 +29,6 @@ export default {
       const animeDemo = this.stats.classification?.anime_demographics || {}
       const mangaDemo = this.stats.classification?.manga_demographics || {}
 
-      // Combine demographics
       const allDemographics = new Set([...Object.keys(animeDemo), ...Object.keys(mangaDemo)])
 
       if (this.chartInstance) {

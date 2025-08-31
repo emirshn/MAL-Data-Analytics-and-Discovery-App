@@ -141,13 +141,11 @@ const getImageUrl = () => {
   return '/placeholder-manga.jpg'
 }
 
-// Helper function to get authors list
 const getAuthorsList = () => {
   if (!manga.authors || !Array.isArray(manga.authors)) return []
   return manga.authors.map((author) => author.name).filter((name) => name)
 }
 
-// Helper function to get serializations list
 const getSerializationsList = () => {
   if (!manga.serializations || !Array.isArray(manga.serializations)) return []
   return manga.serializations.map((serialization) => serialization.name).filter((name) => name)

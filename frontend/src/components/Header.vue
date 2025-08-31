@@ -4,7 +4,6 @@
     :class="{ 'pointer-events-none': !headerLock.unlocked }"
   >
     <div class="max-w-7xl mx-auto h-full flex items-center justify-between px-4 md:px-8">
-      <!-- Logo + Text -->
       <router-link to="/home" class="flex items-center space-x-2">
         <img src="/logo.jpg" alt="Logo" class="h-10 w-auto" />
         <span

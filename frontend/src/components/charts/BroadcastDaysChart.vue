@@ -22,7 +22,7 @@ export default {
       chartInstance: null,
       canvasElement: null,
       colors: {
-        purple: '#a78bfa', // Tailwind violet-400
+        purple: '#a78bfa',
       },
     }
   },

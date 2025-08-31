@@ -22,7 +22,6 @@
             class="flex-shrink-0 w-32 group cursor-pointer"
             @click="$emit('entryClick', entry)"
           >
-            <!-- Fixed height card with flex layout -->
             <div
               class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full flex flex-col"
             >
@@ -42,7 +41,6 @@
                   </span>
                 </div>
               </div>
-              <!-- Fixed height content area -->
               <div class="p-2 flex-1 flex flex-col justify-between min-h-[60px]">
                 <h5
                   class="text-xs font-medium text-white line-clamp-2 group-hover:text-pink-300 transition-colors leading-tight mb-1 flex-1"
@@ -84,7 +82,6 @@
             class="flex-shrink-0 w-40 group cursor-pointer"
             @click="$emit('entryClick', recommendation)"
           >
-            <!-- Fixed height card -->
             <div
               class="bg-gray-900 rounded-lg overflow-hidden hover:bg-gray-700 transition-colors h-full flex flex-col"
             >
@@ -102,7 +99,6 @@
                   </span>
                 </div>
               </div>
-              <!-- Fixed height content area -->
               <div class="p-3 flex-1 flex flex-col justify-between min-h-[70px]">
                 <h5
                   class="text-sm font-medium text-white line-clamp-2 group-hover:text-amber-300 transition-colors leading-tight mb-1 flex-1"
@@ -143,7 +139,6 @@ function getRecommendationImageUrl(entry) {
 }
 
 function getRecommendationType(entry) {
-  // Check the URL to determine if it's anime or manga
   if (entry.url) {
     if (entry.url.includes('/manga/')) {
       return 'MANGA'
@@ -152,12 +147,10 @@ function getRecommendationType(entry) {
     }
   }
 
-  // Fallback to entry type if available
   if (entry.type) {
     return entry.type.toUpperCase()
   }
 
-  // Default fallback
   return 'ANIME'
 }
 </script>

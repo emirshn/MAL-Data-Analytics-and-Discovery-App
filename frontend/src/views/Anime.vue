@@ -132,7 +132,7 @@
           class="group rounded-lg shadow-lg overflow-visible bg-gray-800 hover:bg-gray-700 transition-all duration-300 cursor-pointer relative hover:z-50"
           @click="openAnimeDetail(anime)"
         >
-          <!-- Original card - always visible -->
+          <!-- Original card -->
           <div class="relative overflow-hidden rounded-lg">
             <img
               :src="
@@ -158,7 +158,7 @@
             </h2>
           </div>
 
-          <!-- Hover details panel - Text only Netflix style -->
+          <!-- Hover details panel -->
           <div
             :class="[
               'absolute top-0 w-80 bg-gray-800 border border-gray-700 shadow-2xl rounded-lg overflow-hidden opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all duration-300 z-50 pointer-events-none',

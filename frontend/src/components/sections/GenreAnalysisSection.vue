@@ -2,13 +2,11 @@
   <section class="space-y-8">
     <h2 class="text-3xl font-bold text-center text-indigo-400">🎭 Genre Analysis</h2>
 
-    <!-- Pie Charts Row - Top Genres and Genre Combinations -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <TopGenresChart :stats="stats" />
       <GenreCombinationsChart :stats="stats" />
     </div>
 
-    <!-- Genre Performance - Full Width -->
     <GenrePerformanceChart :stats="stats" />
   </section>
 </template>

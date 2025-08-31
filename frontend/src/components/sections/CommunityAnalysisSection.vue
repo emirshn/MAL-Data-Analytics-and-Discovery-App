@@ -4,7 +4,6 @@
 
     <MembersDistributionChart :stats="stats" />
 
-    <!-- Tabs -->
     <div class="flex justify-center space-x-4 border-b border-slate-700">
       <button
         v-for="tab in tabs"
@@ -21,7 +20,6 @@
       </button>
     </div>
 
-    <!-- Active Chart -->
     <div class="p-4 bg-slate-900 rounded-2xl shadow-lg">
       <MembersScoreChart v-if="activeTab === 'Members Score'" :stats="stats" />
       <PopularityScoreChart v-if="activeTab === 'Popularity Score'" :stats="stats" />

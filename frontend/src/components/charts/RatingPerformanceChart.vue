@@ -69,9 +69,9 @@ export default {
           datasets: [
             {
               data: Object.values(data),
-              backgroundColor: this.chartColors.map((color) => color + 'CC'), // More opaque
+              backgroundColor: this.chartColors.map((color) => color + 'CC'),
               borderColor: this.chartColors,
-              borderWidth: 3, // Thicker borders
+              borderWidth: 3,
             },
           ],
         },

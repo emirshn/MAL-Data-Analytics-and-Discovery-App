@@ -277,7 +277,6 @@ import axios from 'axios'
 import { ref, nextTick, onMounted, onBeforeUnmount, watch } from 'vue'
 import TagSection from '@/components/common/TagSection.vue'
 import RelatedInfo from '@/components/common/RelatedInfo.vue'
-import AiRecommendation from '@/components/common/AiRecommendation.vue'
 import MangaHero from '@/components/manga/MangaHero.vue'
 
 const route = useRoute()
@@ -308,25 +307,6 @@ function openMangaDetail(item) {
   } else {
     window.location.href = `/anime/${id}`
   }
-}
-
-const getImageUrl = () => {
-  if (!manga.value?.images) return null
-
-  if (manga.value.images.webp?.large_image_url) {
-    return manga.value.images.webp.large_image_url
-  }
-  if (manga.value.images.webp?.image_url) {
-    return manga.value.images.webp.image_url
-  }
-  if (manga.value.images.jpg?.large_image_url) {
-    return manga.value.images.jpg.large_image_url
-  }
-  if (manga.value.images.jpg?.image_url) {
-    return manga.value.images.jpg.image_url
-  }
-
-  return null
 }
 
 const getPublishedString = () => {
@@ -414,11 +394,6 @@ const getRecommendationImageUrl = (entry) => {
   return getPlaceholderImage({ type: 'manga' })
 }
 
-// Handle image error for recommendation images
-const handleRecommendationImageError = (event, entry) => {
-  event.target.src = getPlaceholderImage({ type: 'manga' })
-}
-
 // Helper function to get placeholder image
 const getPlaceholderImage = (entry) => {
   return `https://via.placeholder.com/200x280/374151/f3f4f6?text=${encodeURIComponent(entry.type)}`
@@ -462,22 +437,6 @@ const loadRelationImage = async (entry) => {
   }
 }
 
-const loadRelationImages = async () => {
-  if (!manga.value?.relations) return
-
-  for (const relation of manga.value.relations) {
-    for (const entry of relation.entry) {
-      await loadRelationImage(entry)
-      await sleep(400)
-    }
-  }
-}
-
-const formatScore = (score) => {
-  if (!score) return 'N/A'
-  return parseFloat(score).toFixed(1)
-}
-
 const formatNumber = (num) => {
   if (!num) return 'N/A'
   return parseInt(num).toLocaleString()
@@ -496,25 +455,6 @@ const formatDate = (dateStr) => {
   }
 }
 
-const getStatusColor = (status) => {
-  const statusColors = {
-    Finished: 'text-green-400',
-    Publishing: 'text-blue-400',
-    'On Hiatus': 'text-yellow-400',
-    Discontinued: 'text-red-400',
-    'Not yet published': 'text-yellow-400',
-    Completed: 'text-green-400',
-    Ongoing: 'text-blue-400',
-    Upcoming: 'text-yellow-400',
-  }
-  return statusColors[status] || 'text-gray-400'
-}
-
-const handleImageError = (event) => {
-  event.target.src = '/placeholder-manga.jpg'
-}
-
-// Concurrency control for relation images
 const MAX_CONCURRENT = 4
 const queue = []
 let active = 0
@@ -629,7 +569,7 @@ onBeforeUnmount(() => {
 }
 
 .grid-container {
-  overflow: hidden; /* Prevents grid overflow */
+  overflow: hidden;
   width: 100%;
   height: 100%;
 }
@@ -650,7 +590,6 @@ onBeforeUnmount(() => {
     rgba(255, 255, 255, 0.8) 75%,
     rgba(255, 255, 255, 1) 100%
   );
-  /* Prevent overflow */
   width: 120%;
   left: -10%;
 }
@@ -665,7 +604,6 @@ onBeforeUnmount(() => {
   opacity: 0.1;
   animation: gridTransform2 10s ease-in-out infinite alternate-reverse;
   mask: linear-gradient(to right, transparent 30%, white 100%);
-  /* Prevent overflow */
   width: 130%;
   left: -15%;
 }

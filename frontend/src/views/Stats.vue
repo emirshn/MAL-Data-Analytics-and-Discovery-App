@@ -20,7 +20,7 @@
     </div>
 
     <!-- Main Content -->
-    <div v-else class="space-y-16">
+    <div v-else-if="chartsReady" class="space-y-16">
       <OverviewSection :cards="overviewCards" :animatedValues="animatedValues" />
       <ScoreAnalysisSection :stats="stats" />
       <GenreAnalysisSection :stats="stats" />
@@ -32,11 +32,19 @@
       <CreatorsPublicationsSection :stats="stats" />
       <TopListsSection :stats="stats" />
     </div>
+
+    <!-- Loading state for charts -->
+    <div v-else class="flex flex-col items-center justify-center min-h-[400px]">
+      <div
+        class="w-8 h-8 border-2 border-slate-700 border-t-indigo-500 rounded-full animate-spin mb-4"
+      ></div>
+      <p class="text-lg">Preparing charts...</p>
+    </div>
   </div>
 </template>
 
 <script>
-import { ref, onMounted, nextTick } from 'vue'
+import { ref, onMounted, nextTick, computed } from 'vue'
 import ScoreAnalysisSection from '@/components/sections/ScoreAnalysisSection.vue'
 import GenreAnalysisSection from '@/components/sections/GenreAnalysisSection.vue'
 import StudioAnalysisSection from '@/components/sections/StudioAnalysisSection.vue'
@@ -47,6 +55,7 @@ import ContentLengthSection from '@/components/sections/ContentLengthSection.vue
 import CreatorsPublicationsSection from '@/components/sections/CreatorsPublicationsSection.vue'
 import TopListsSection from '@/components/sections/TopListsSection.vue'
 import OverviewSection from '@/components/sections/OverviewSection.vue'
+import { useStatsStore } from '@/stores/statsStore.js'
 
 export default {
   name: 'ComprehensiveStats',
@@ -63,9 +72,11 @@ export default {
     OverviewSection,
   },
   setup() {
-    const loading = ref(true)
-    const stats = ref({})
+    const statsStore = useStatsStore()
+    const loading = computed(() => statsStore.loading)
+    const stats = computed(() => statsStore.stats)
     const animatedValues = ref({})
+    const chartsReady = ref(false)
 
     // Chart instances for cleanup later
     const chartInstances = ref(new Map())
@@ -165,16 +176,23 @@ export default {
       return calculatedValues
     }
 
+    const prepareChartsForRender = async () => {
+      // Wait for all DOM updates to complete
+      await nextTick()
+
+      // Add a small delay to ensure all child components are fully mounted
+      setTimeout(() => {
+        chartsReady.value = true
+        console.log('Charts ready for rendering')
+      }, 200)
+    }
+
     // Fetch stats
-    const fetchStats = async () => {
+    const fetchStats = async (forceRefresh = false) => {
       try {
-        const response = await fetch('http://127.0.0.1:8000/stats/')
-        const data = await response.json()
+        const data = await statsStore.fetchStats(forceRefresh)
 
-        stats.value = data
-        console.log('Comprehensive stats loaded:', data)
-
-        // Calculate missing values for overview which doesnt exists in data
+        // Calculate missing values for overview
         const calculatedValues = calculateMissingValues(data)
 
         // Prepare overview data for animation
@@ -187,11 +205,9 @@ export default {
 
         animateNumbers(overviewData)
 
-        loading.value = false
-        await nextTick()
+        await prepareChartsForRender()
       } catch (error) {
         console.error('Failed to fetch comprehensive stats:', error)
-        loading.value = false
       }
     }
 
@@ -229,8 +245,21 @@ export default {
       chartInstances.value.clear()
     }
 
-    onMounted(() => {
-      fetchStats()
+    onMounted(async () => {
+      if (statsStore.hasData && statsStore.isDataFresh) {
+        const calculatedValues = calculateMissingValues(statsStore.stats)
+        const overviewData = {
+          ...statsStore.stats.overview,
+          anime_completion_rate: statsStore.stats.overview.completion_rates.anime,
+          manga_completion_rate: statsStore.stats.overview.completion_rates.manga,
+          ...calculatedValues,
+        }
+        animateNumbers(overviewData)
+
+        await prepareChartsForRender()
+      } else {
+        await fetchStats()
+      }
     })
 
     return {
@@ -239,6 +268,7 @@ export default {
       animatedValues,
       overviewCards,
       cleanup,
+      chartsReady,
     }
   },
 

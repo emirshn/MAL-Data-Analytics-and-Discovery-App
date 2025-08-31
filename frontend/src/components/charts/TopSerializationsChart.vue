@@ -30,7 +30,7 @@ export default {
         '#ef4444',
         '#10b981',
         '#f59e0b',
-      ], // bright palette
+      ],
     }
   },
   methods: {

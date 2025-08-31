@@ -75,14 +75,14 @@ export default {
             legend: {
               position: 'bottom',
               labels: {
-                color: 'rgb(148, 163, 184)', // Fixed legend text color
+                color: 'rgb(148, 163, 184)',
                 generateLabels: function (chart) {
                   const data = chart.data
                   if (data.labels.length && data.datasets.length) {
                     return data.labels.map((label, i) => ({
                       text: label.length > 20 ? label.substring(0, 20) + '...' : label,
                       fillStyle: data.datasets[0].backgroundColor[i],
-                      fontColor: 'rgb(148, 163, 184)', // Also set fontColor for custom labels
+                      fontColor: 'rgb(148, 163, 184)',
                       index: i,
                     }))
                   }

@@ -22,7 +22,7 @@ export default {
       chartInstance: null,
       canvasElement: null,
       colors: {
-        success: '#4ade80', // Tailwind green-400
+        success: '#4ade80',
       },
     }
   },

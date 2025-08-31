@@ -2,17 +2,14 @@
   <section class="space-y-8">
     <h2 class="text-3xl font-bold text-center text-indigo-400">📚 Content Classification</h2>
 
-    <!-- First Row: Anime Types, Manga Types, Source Material (3 pie charts) -->
     <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-8">
       <AnimeTypesChart :stats="stats" />
       <MangaTypesChart :stats="stats" />
       <SourceMaterialChart :stats="stats" />
     </div>
 
-    <!-- Second Row: Source Performance - Full Width -->
     <SourcePerformanceChart :stats="stats" />
 
-    <!-- Third Row: Demographics and Rating Distribution -->
     <div class="grid grid-cols-1 lg:grid-cols-2 gap-8">
       <DemographicsChart :stats="stats" />
       <RatingDistributionChart :stats="stats" />

@@ -802,7 +802,7 @@ onBeforeUnmount(() => {
 }
 
 .grid-container {
-  overflow: hidden; /* Prevents grid overflow */
+  overflow: hidden;
   width: 100%;
   height: 100%;
 }
@@ -823,7 +823,6 @@ onBeforeUnmount(() => {
     rgba(255, 255, 255, 0.8) 75%,
     rgba(255, 255, 255, 1) 100%
   );
-  /* Prevent overflow */
   width: 120%;
   left: -10%;
 }
@@ -838,7 +837,6 @@ onBeforeUnmount(() => {
   opacity: 0.1;
   animation: gridTransform2 10s ease-in-out infinite alternate-reverse;
   mask: linear-gradient(to right, transparent 30%, white 100%);
-  /* Prevent overflow */
   width: 130%;
   left: -15%;
 }

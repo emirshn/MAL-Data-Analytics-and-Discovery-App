@@ -54,7 +54,6 @@ export default {
   transform: translateY(-2px);
 }
 
-/* Scrollbar for lists */
 .max-h-96::-webkit-scrollbar {
   width: 4px;
 }

@@ -1,4 +1,3 @@
-<!-- components/StatCard.vue -->
 <template>
   <div :class="`bg-${color}-600 bg-opacity-20 p-3 rounded-lg text-center`">
     <div :class="`text-${color}-400 text-2xl font-bold`">
