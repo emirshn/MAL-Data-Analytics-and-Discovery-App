@@ -31,6 +31,7 @@ This project provides a full-stack solution for anime and manga fans to explore,
 - Recommendation system based on **genres, themes, synopsis and much more **.  
 
 This project uses a MAL dataset that I fetched myself from MAL API and Jikan API you can access actual dataset from backend folder which is zipped for storage limits.
+You can test project [here](https://maldiscovery.netlify.app/manga). (I'm using free service so it can be slow)
 
 ---
 
