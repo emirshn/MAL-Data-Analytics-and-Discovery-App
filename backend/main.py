@@ -49,6 +49,7 @@ def load_dataframes():
     # Fallback to local files
     try:
         BASE_DIR = Path(__file__).parent.parent
+        # Change to csv only if you have csv files directly
         ANIME_CSV = BASE_DIR / "backend" / "animes.csv.gz"
         MANGA_CSV = BASE_DIR / "backend" / "mangas.csv.gz"
         anime_df = pd.read_csv(ANIME_CSV)
