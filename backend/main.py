@@ -8,6 +8,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pathlib import Path
 import re
 from pydantic import BaseModel
+from dotenv import load_dotenv
 
 app = FastAPI()
 
@@ -25,12 +26,40 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-BASE_DIR = Path(__file__).parent.parent
-ANIME_CSV = BASE_DIR / "dataset" / "animes.csv"
-MANGA_CSV = BASE_DIR / "dataset" / "mangas.csv"
+import os
+BASE_DIR = Path(__file__).parent
+load_dotenv(BASE_DIR / '.env')
 
-anime_df = pd.read_csv(ANIME_CSV)
-manga_df = pd.read_csv(MANGA_CSV)
+def load_dataframes():
+    """Load dataframes from URLs or local files"""
+    
+    anime_url = os.getenv('ANIME_CSV_URL')
+    manga_url = os.getenv('MANGA_CSV_URL')
+    
+    if anime_url and manga_url and anime_url.startswith('http'):
+        try:
+            print("Loading from configured URLs...")
+            print(f"Anime URL: {anime_url}")
+            print(f"Manga URL: {manga_url}")
+            anime_df = pd.read_csv(anime_url)
+            manga_df = pd.read_csv(manga_url)
+            print("✓ Successfully loaded from URLs")
+        except Exception as e:
+            print(f"Failed to load from URLs: {e}")
+    # Fallback to local files
+    try:
+        BASE_DIR = Path(__file__).parent.parent
+        ANIME_CSV = BASE_DIR / "backend" / "animes.csv.gz"
+        MANGA_CSV = BASE_DIR / "backend" / "mangas.csv.gz"
+        anime_df = pd.read_csv(ANIME_CSV)
+        manga_df = pd.read_csv(MANGA_CSV, compression='gzip')
+        print("✓ Successfully loaded from local files")
+        return anime_df, manga_df
+    except Exception as e:
+        print(f"Failed to load local files: {e}")
+        raise Exception("No data source available")
+
+anime_df, manga_df = load_dataframes()
 
 def safe_value(val):
     """Handle NaN, None, and invalid values"""
@@ -2155,8 +2184,8 @@ def load_recommender():
     model_files = [
         "anime_recommender_advanced.pkl.gz",
         "anime_recommender_advanced.pkl", 
-        "dataset/anime_recommender_advanced.pkl.gz",
-        "dataset/anime_recommender_advanced.pkl"
+        "backend/anime_recommender_advanced.pkl.gz",
+        "backend/anime_recommender_advanced.pkl"
     ]
     
     for model_file in model_files:
